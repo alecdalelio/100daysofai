@@ -13,12 +13,12 @@ const Navigation = () => {
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
       <div className="max-w-6xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <Link 
             to="/" 
-            className="text-xl font-bold gradient-text-electric hover:scale-105 transition-transform"
+            className="text-xl font-bold font-mono gradient-text-electric hover:scale-105 transition-all duration-300 hover-lift"
           >
             #100DaysOfAI
           </Link>
@@ -29,14 +29,18 @@ const Navigation = () => {
                 key={item.href}
                 to={item.href}
                 className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                  "hover:bg-accent hover:text-accent-foreground",
+                  "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300",
+                  "hover:bg-accent hover:text-accent-foreground hover:-translate-y-0.5",
+                  "relative overflow-hidden group",
                   location.pathname === item.href
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground"
+                    ? "bg-accent text-accent-foreground shadow-lg"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {item.label}
+                <span className="relative z-10">{item.label}</span>
+                {location.pathname === item.href && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-electric/5 to-cyber/5 shimmer" />
+                )}
               </Link>
             ))}
           </div>
