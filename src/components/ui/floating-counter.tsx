@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 
 const FloatingCounter = () => {
   const location = useLocation();
-  const currentDay = 3; // This could be dynamic based on current date
+  const currentDay = 0; // This could be dynamic based on current date
   const totalDays = 100;
   const progress = (currentDay / totalDays) * 100;
 

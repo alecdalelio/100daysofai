@@ -4,28 +4,37 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Calendar, Code2, Sparkles, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import FloatingCounter from "@/components/ui/floating-counter";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 const Home = () => {
-  const recentEntries = [
-    {
-      day: 3,
-      title: "Building AI-native workflows with Claude + Cursor",
-      date: "Jan 8, 2025",
-      preview: "Explored how AI pair programming changes the game for rapid prototyping..."
-    },
-    {
-      day: 2,
-      title: "LLM agent architectures: ReAct vs Function Calling",
-      date: "Jan 7, 2025",
-      preview: "Diving deep into different patterns for building reliable AI agents..."
-    },
-    {
-      day: 1,
-      title: "Kicking off #100DaysOfAI",
-      date: "Jan 6, 2025",
-      preview: "Setting intentions, choosing tools, and mapping the learning journey ahead..."
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchLogs() {
+      try {
+        const { data, error } = await supabase
+          .from('logs')
+          .select('*')
+          .eq('is_published', true)
+          .order('day', { ascending: false })
+          .limit(5);
+
+        if (error) {
+          console.error('Failed to fetch logs:', error);
+        } else {
+          setLogs(data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching logs:', error);
+      } finally {
+        setLoading(false);
+      }
     }
-  ];
+
+    fetchLogs();
+  }, []);
 
   return (
     <>
@@ -40,7 +49,7 @@ const Home = () => {
             <div className="animate-float mb-8">
               <Badge variant="secondary" className="glow-electric px-6 py-3 text-base font-mono hover-lift">
                 <Sparkles className="w-5 h-5 mr-3" />
-                Day 3 of 100
+                Day 0 of 100
               </Badge>
             </div>
             
@@ -76,30 +85,76 @@ const Home = () => {
             </div>
             
             <div className="grid gap-8">
-              {recentEntries.map((entry, index) => (
-                <Card 
-                  key={entry.day} 
-                  className="glow-primary hover:glow-electric transition-all duration-500 group hover-lift"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  <CardHeader className="pb-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <Badge variant="secondary" className="font-mono text-base px-4 py-2">
-                        Day {entry.day}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground font-mono">{entry.date}</span>
+              {loading ? (
+                <Card className="glow-primary hover:glow-electric transition-all duration-500 hover-lift">
+                  <CardContent className="py-12 text-center">
+                    <div className="flex flex-col items-center gap-6">
+                      <div className="p-4 rounded-full bg-electric/10">
+                        <Sparkles className="w-8 h-8 text-electric" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-semibold mb-2">Loading Entries...</h3>
+                        <p className="text-muted-foreground mb-6">
+                          Please wait while we fetch the latest entries.
+                        </p>
+                      </div>
                     </div>
-                    <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-electric transition-all duration-500 leading-tight">
-                      {entry.title}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="text-lg leading-relaxed">
-                      {entry.preview}
-                    </CardDescription>
                   </CardContent>
                 </Card>
-              ))}
+                             ) : logs.length > 0 ? (
+                 logs.map((entry, index) => (
+                  <Link 
+                    key={entry.id} 
+                    to={`/log/${entry.id}`}
+                    className="block"
+                  >
+                     <Card 
+                       className="glow-primary hover:glow-electric transition-all duration-500 group hover-lift cursor-pointer"
+                       style={{ animationDelay: `${index * 0.1}s` }}
+                     >
+                       <CardHeader className="pb-6">
+                         <div className="flex items-center justify-between mb-4">
+                           <Badge variant="secondary" className="font-mono text-base px-4 py-2">
+                             Day {entry.day}
+                           </Badge>
+                           <span className="text-sm text-muted-foreground font-mono">
+                             {entry.created_at ? new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+                           </span>
+                         </div>
+                         <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-electric transition-all duration-500 leading-tight">
+                           {entry.title}
+                         </CardTitle>
+                       </CardHeader>
+                       <CardContent>
+                         <CardDescription className="text-lg leading-relaxed">
+                           {entry.summary}
+                         </CardDescription>
+                       </CardContent>
+                     </Card>
+                   </Link>
+                 ))
+              ) : (
+                <Card className="glow-primary hover:glow-electric transition-all duration-500 hover-lift">
+                  <CardContent className="py-12 text-center">
+                    <div className="flex flex-col items-center gap-6">
+                      <div className="p-4 rounded-full bg-electric/10">
+                        <Sparkles className="w-8 h-8 text-electric" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-semibold mb-2">Ready to Begin</h3>
+                        <p className="text-muted-foreground mb-6">
+                          Your first log entry will appear here once you start your #100DaysOfAI journey.
+                        </p>
+                        <Button asChild size="lg" className="glow-primary hover:glow-electric">
+                          <Link to="/new-log">
+                            Create Your First Entry <ArrowRight className="w-4 h-4 ml-2" />
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
             
             <div className="text-center mt-12">
