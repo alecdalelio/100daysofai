@@ -23,6 +23,7 @@ interface CreateLogEntryFormProps {
 }
 
 const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => {
+  const { userId } = useAuth();
   const [formData, setFormData] = useState<LogEntry>({
     day: 1,
     title: '',
@@ -47,9 +48,12 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
     setMessage(null);
 
     try {
+      const payload: any = { ...formData };
+      if (userId) payload.user_id = userId;
+      
       const { data, error } = await supabase
         .from('logs')
-        .insert([formData])
+        .insert([payload])
         .select();
 
       if (error) {
