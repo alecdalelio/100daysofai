@@ -3,8 +3,8 @@ import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
 import { Link } from 'react-router-dom'
 
-type Log = {
-  id: number
+type MyLog = {
+  id: string
   title: string
   day: number
   is_published: boolean
@@ -13,7 +13,7 @@ type Log = {
 
 export default function MyLogs() {
   const { userId } = useAuth()
-  const [logs, setLogs] = useState<Log[]>([])
+  const [logs, setLogs] = useState<MyLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,14 +41,15 @@ export default function MyLogs() {
             setError(error.message)
             setLogs([])
           } else if (data) {
-            setLogs(data as any)
+            setLogs(data as MyLog[])
           }
           setLoading(false)
         }
-      } catch (e: any) {
+      } catch (e) {
         if (!cancelled) {
           console.error('Unexpected error loading logs:', e)
-          setError(e?.message ?? 'Unexpected error')
+          const errorObj = e as { message?: string }
+          setError(errorObj?.message ?? 'Unexpected error')
           setLoading(false)
         }
       }

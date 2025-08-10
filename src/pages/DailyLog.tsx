@@ -1,32 +1,58 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Share2, ExternalLink, Plus } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Calendar, Share2, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import FloatingCounter from "@/components/ui/floating-counter";
 import { supabase } from "@/lib/supabase";
+import { LogEntry } from "@/lib/types";
 
 const DailyLog = () => {
-  const [entries, setEntries] = useState<any[]>([]);
+  const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const maxDay = useMemo(() => (entries.length ? Math.max(...entries.map((e:any)=>Number(e.day)||0)) : 0), [entries]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const maxDay = useMemo(() => (entries.length ? Math.max(...entries.map((e) => e.day || 0)) : 0), [entries]);
 
   useEffect(() => {
     async function fetchPublished() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('logs')
-        .select('*')
-        .eq('is_published', true)
-        .order('created_at', { ascending: false });
-      if (!error) setEntries(data as any[] ?? []);
-      setLoading(false);
+      setErrorMsg(null);
+
+      const TIMEOUT_MS = 15000;
+      const withTimeout = <T,>(p: Promise<T>) =>
+        Promise.race([
+          p,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Request timed out. Please try again.")), TIMEOUT_MS)
+          ),
+        ]);
+
+      try {
+        const query = supabase
+          .from('logs')
+          .select('id, day, title, content, created_at, is_published')
+          .eq('is_published', true)
+          .order('created_at', { ascending: false });
+
+        const { data, error } = await withTimeout(query);
+
+        if (error) throw error;
+        setEntries((data as LogEntry[]) ?? []);
+      } catch (err) {
+        const errorObj = err as { message?: string }
+        const message = errorObj?.message || 'Failed to load logs';
+        setErrorMsg(message);
+        setEntries([]);
+      } finally {
+        setLoading(false);
+      }
     }
     fetchPublished();
   }, []);
 
-  const handleShare = (entry: any) => {
+  const handleShare = (entry: LogEntry) => {
     const url = `${window.location.origin}/log/${entry.id}`;
     navigator.clipboard.writeText(url);
     // You could show a toast here
@@ -51,6 +77,16 @@ const DailyLog = () => {
                 Raw thoughts, discoveries, and experiments from the frontier.
               </p>
             </div>
+
+            {/* Error */}
+            {errorMsg && (
+              <div className="mb-6">
+                <Alert variant="destructive">
+                  <AlertTitle>Could not load logs</AlertTitle>
+                  <AlertDescription>{errorMsg}</AlertDescription>
+                </Alert>
+              </div>
+            )}
 
             {/* Entries */}
             <div className="space-y-12">

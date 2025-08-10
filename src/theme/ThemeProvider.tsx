@@ -22,10 +22,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, theme)
   }, [theme])
 
-  useEffect(() => {
-    applyClass(theme)
-  }, [])
-
   const api = useMemo<Ctx>(() => ({
     theme,
     setTheme: (t) => setThemeState(t),

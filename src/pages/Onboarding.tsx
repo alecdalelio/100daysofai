@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
-import { callFn } from '../lib/supabase'
+import { callEdgeFunction } from '../lib/supabase'
 
 type Answers = {
   experience_level: 'beginner'|'intermediate'|'advanced'
@@ -32,6 +32,7 @@ export default function Onboarding() {
   const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [submitting, setSubmitting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Answers>({
     experience_level: 'intermediate',
     goals: [],
@@ -54,20 +55,92 @@ export default function Onboarding() {
 
   async function submit() {
     setSubmitting(true)
+    setErrorMsg(null)
+    const SAFETY_MS = 160000 // 160 seconds - slightly longer than the fetch timeout
+    const safetyTimer = setTimeout(() => {
+      setSubmitting(false)
+      setErrorMsg('Generation took too long. The OpenAI API might be slow. Please try again.')
+    }, SAFETY_MS)
+    
     try {
+      // First test basic connectivity to Supabase
+      console.log('[Onboarding] Testing Supabase connectivity...')
+      console.log('[Onboarding] VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL)
+      console.log('[Onboarding] VITE_SUPABASE_ANON_KEY present:', !!import.meta.env.VITE_SUPABASE_ANON_KEY)
+      
+      // Test 1: Basic ping to Supabase REST API
+      try {
+        const pingController = new AbortController()
+        setTimeout(() => pingController.abort(), 5000)
+        
+        const pingResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`, {
+          method: 'GET',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          signal: pingController.signal,
+        })
+        console.log('[Onboarding] Supabase REST ping response:', pingResponse.status, pingResponse.statusText)
+      } catch (pingError) {
+        console.error('[Onboarding] Supabase REST ping failed:', pingError)
+        throw new Error(`Cannot connect to Supabase REST API: ${pingError.message}`)
+      }
+
+      // Test 2: Test Edge Functions endpoint specifically
+      try {
+        const edgeController = new AbortController()
+        setTimeout(() => edgeController.abort(), 5000)
+        
+        const edgeResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate_syllabus`, {
+          method: 'OPTIONS', // Just test if the endpoint exists
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          signal: edgeController.signal,
+        })
+        console.log('[Onboarding] Edge Functions OPTIONS response:', edgeResponse.status, edgeResponse.statusText)
+        
+        if (edgeResponse.status === 404) {
+          throw new Error('generate_syllabus Edge Function not found (404) - may not be deployed')
+        }
+      } catch (edgeError) {
+        console.error('[Onboarding] Edge Functions test failed:', edgeError)
+        throw new Error(`Edge Functions not accessible: ${edgeError.message}`)
+      }
+      
       const start = Date.now()
-      const { syllabus } = await callFn<{ syllabus: { id: string } }>('generate_syllabus', {
-        body: { answers },
-        token: session.access_token,
-        timeoutMs: 90000,
+      console.log('[Onboarding] BYPASSING callEdgeFunction - using direct fetch')
+      
+      // Direct fetch to bypass any issues with callEdgeFunction
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate_syllabus`, {
+        method: 'POST',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': session?.access_token ? `Bearer ${session.access_token}` : `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ answers }),
+        signal: AbortSignal.timeout(150000) // 150 second timeout to allow OpenAI API call
       })
+      
+      console.log('[Onboarding] Direct fetch response:', response.status)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Function failed: ${response.status} - ${errorText}`)
+      }
+      
+      const { syllabus } = await response.json()
       if (!syllabus?.id) throw new Error('Function returned no syllabus ID')
       console.debug('Syllabus generated in', Date.now() - start, 'ms')
       navigate(`/syllabus/${syllabus.id}`)
     } catch (e) {
-      const msg = (e as any)?.message ?? 'Something went wrong'
-      alert(msg)
+      const errorObj = e as { message?: string }
+      const msg = errorObj?.message ?? 'Failed to generate syllabus'
+      console.error('[Onboarding] generate_syllabus error:', e)
+      setErrorMsg(msg)
     } finally {
+      clearTimeout(safetyTimer)
       setSubmitting(false)
     }
   }
@@ -83,7 +156,7 @@ export default function Onboarding() {
             <select
               className="w-full border rounded p-2"
               value={answers.experience_level}
-              onChange={(e)=>setAnswers(a=>({...a, experience_level: e.target.value as any}))}
+              onChange={(e)=>setAnswers(a=>({...a, experience_level: e.target.value as 'beginner' | 'intermediate' | 'advanced'}))}
             >
               <option value="beginner">Beginner</option>
               <option value="intermediate">Intermediate</option>
@@ -161,6 +234,9 @@ export default function Onboarding() {
         <section className="card p-4 space-y-4">
           <h2 className="text-lg font-medium">Review</h2>
           <pre className="text-xs overflow-auto p-3 rounded bg-gray-50 dark:bg-gray-900">{JSON.stringify(answers, null, 2)}</pre>
+          {errorMsg && (
+            <div className="text-sm text-red-600">{errorMsg}</div>
+          )}
           <div className="flex justify-between">
             <button className="btn btn-secondary focus-ring" onClick={()=>setStep(2)}>Back</button>
             <button className="btn btn-primary focus-ring" onClick={submit} disabled={submitting}>

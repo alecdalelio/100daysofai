@@ -3,13 +3,7 @@ import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useRef, useState } from 'react'
 import { supabase, signOut } from '../lib/supabase'
-
-type Profile = {
-  id: string
-  username: string | null
-  display_name: string | null
-  avatar_url: string | null
-}
+import { Profile } from '../lib/types'
 
 export default function Header() {
   const { userId } = useAuth()
@@ -19,26 +13,28 @@ export default function Header() {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [hasSyllabus, setHasSyllabus] = useState<boolean>(true)
 
-  const loadProfile = async () => {
-    if (!userId) { setProfile(null); return }
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle()
-    setProfile(data as any)
-  }
-
   useEffect(() => {
     let mounted = true
     if (!userId) { setProfile(null); return }
-    // initial load
-    loadProfile()
-    // check syllabus once
-    ;(async () => {
+    
+    const loadProfile = async () => {
+      if (!userId) { setProfile(null); return }
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
+      if (mounted) setProfile(data as Profile | null)
+    }
+    
+    const loadData = async () => {
+      await loadProfile()
+      // check syllabus once
       const { data: syl } = await supabase.from('syllabi').select('id').eq('user_id', userId).limit(1)
-      setHasSyllabus(!!(syl && syl.length))
-    })()
+      if (mounted) setHasSyllabus(!!(syl && syl.length))
+    }
+    
+    loadData()
 
     // realtime updates for this user's profile
     const channel = supabase
@@ -144,9 +140,24 @@ export default function Header() {
                 <button
                   className="w-full text-left px-3 py-2 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
                   role="menuitem"
-                  onClick={async () => { setMenuOpen(false); await signOut(); navigate('/'); }}
+                  onClick={async () => { 
+                    setMenuOpen(false); 
+                    console.log('[Header] Force sign out - clearing all data');
+                    
+                    // Nuclear option: clear everything manually
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    
+                    // Clear all cookies
+                    document.cookie.split(";").forEach(function(c) { 
+                      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+                    });
+                    
+                    // Immediate redirect
+                    window.location.href = '/';
+                  }}
                 >
-                  Sign out
+                  Sign out (Force)
                 </button>
               </div>
             </div>

@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import FloatingCounter from "@/components/ui/floating-counter";
 import { useAuth } from "@/auth/AuthProvider";
+import { LogEntry as LogEntryType } from "@/lib/types";
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -23,9 +24,9 @@ const LogEntry = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { userId } = useAuth();
-  const [entry, setEntry] = useState(null);
+  const [entry, setEntry] = useState<LogEntryType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -56,13 +57,14 @@ const LogEntry = () => {
         }
 
         if (error) {
-          if ((error as any).code === 'PGRST116') {
+          const errorObj = error as { code?: string }
+          if (errorObj.code === 'PGRST116') {
             setError('Entry not found');
           } else {
             setError('Failed to fetch entry');
           }
         } else {
-          setEntry(data as any);
+          setEntry(data as LogEntryType);
         }
       } catch (err) {
         console.error('Unexpected error while fetching entry by id:', err);
@@ -75,7 +77,7 @@ const LogEntry = () => {
     fetchEntry();
   }, [id]);
 
-  const isOwner = (entry as any)?.user_id && userId && (entry as any).user_id === userId;
+  const isOwner = entry?.user_id && userId && entry.user_id === userId;
 
   async function handleDeleteConfirmed() {
     if (!id) return;

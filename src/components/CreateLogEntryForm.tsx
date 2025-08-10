@@ -49,7 +49,7 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
     setMessage(null);
 
     try {
-      const payload: any = { ...formData };
+      const payload: Record<string, unknown> = { ...formData };
       if (userId) payload.user_id = userId;
       
       const { data, error } = await supabase

@@ -6,9 +6,19 @@ import { Link } from "react-router-dom";
 import FloatingCounter from "@/components/ui/floating-counter";
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
+import { LogEntry } from "@/lib/types";
+
+type HomeLogEntry = {
+  id: string
+  title: string
+  summary?: string
+  day: number
+  created_at: string
+  profiles?: { username?: string }
+}
 
 const Home = () => {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<HomeLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const maxDay = useMemo(() => (logs[0]?.day ? Number(logs[0].day) : 0), [logs]);
 
@@ -32,7 +42,7 @@ const Home = () => {
         if (error) {
           console.error('Failed to fetch logs:', error);
         } else {
-          setLogs(data || []);
+          setLogs((data as HomeLogEntry[]) || []);
         }
       } catch (error) {
         console.error('Error fetching logs:', error);
