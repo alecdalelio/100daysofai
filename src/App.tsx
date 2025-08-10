@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
 import ProtectedRoute from "./auth/ProtectedRoute";
-import Navigation from "./components/ui/navigation";
+import Header from "./components/Header";
+import Account from "./pages/Account";
+import MyLogs from "./pages/MyLogs";
 import Home from "./pages/Home";
 import DailyLog from "./pages/DailyLog";
 import LogEntry from "./pages/LogEntry";
@@ -25,7 +27,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Navigation />
+          <Header />
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
@@ -42,6 +44,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <NewLog />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/account"
+              element={
+                <ProtectedRoute>
+                  <Account />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my/logs"
+              element={
+                <ProtectedRoute>
+                  <MyLogs />
                 </ProtectedRoute>
               }
             />
