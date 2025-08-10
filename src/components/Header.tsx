@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useState } from 'react'
 import { supabase, signOut } from '../lib/supabase'
@@ -27,10 +28,10 @@ export default function Header() {
   }, [userId])
 
   return (
-    <header className="w-full border-b">
+    <header className="w-full sticky top-0 z-40 bg-white/80 dark:bg-black/70 backdrop-blur border-b border-gray-200 dark:border-white/10">
       <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
         <Link to="/" className="font-semibold">100 Days</Link>
-        <nav className="flex items-center gap-3">
+        <nav className="flex items-center gap-4">
           <Link to="/log">Explore</Link>
           {userId ? (
             <div className="relative group">
@@ -52,8 +53,9 @@ export default function Header() {
               </div>
             </div>
           ) : (
-            <Link to="/login" className="border rounded px-3 py-1.5">Log in</Link>
+            <Link to="/login" className="btn btn-secondary focus-ring">Log in</Link>
           )}
+          <ThemeToggle />
         </nav>
       </div>
     </header>

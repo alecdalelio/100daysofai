@@ -79,19 +79,10 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-
-  html {
-    @apply dark;
-  }
-
-  body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
-    letter-spacing: -0.01em;
-  }
+  * { @apply border-border; }
+  html { @apply antialiased; }
+  html { @apply dark; }
+  body { @apply bg-background text-foreground font-sans antialiased; font-feature-settings: "rlig" 1, "calt" 1; letter-spacing: -0.01em; }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-display font-bold tracking-tight;
@@ -125,6 +116,28 @@
 }
 
 @layer components {
+  /* Tokens: Cards / Surfaces */
+  .card { @apply bg-white border border-gray-200 rounded-xl; }
+  html.dark .card { @apply bg-gray-800 border-white/5; }
+
+  /* Tokens: Buttons */
+  .btn { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition; }
+  .btn-primary { @apply bg-gray-900 text-white hover:bg-gray-800; }
+  html.dark .btn-primary { @apply bg-white text-black hover:bg-white/90; }
+
+  .btn-secondary { @apply bg-gray-100 text-gray-900 border border-gray-200 hover:bg-gray-200; }
+  html.dark .btn-secondary { @apply bg-gray-800 text-gray-100 border-white/10 hover:bg-gray-700; }
+
+  /* Tokens: Focus ring visible on dark */
+  .focus-ring { @apply outline-none ring-2 ring-indigo-500 ring-offset-2; }
+  html.dark .focus-ring { @apply ring-offset-black; }
+
+  /* Tokens: Muted text */
+  .muted { @apply text-gray-500; }
+  html.dark .muted { @apply text-gray-300; }
+
+  /* Optional: soft glow accent */
+  .glow-soft { box-shadow: 0 0 0.75rem 0.15rem rgba(168, 85, 247, 0.25); }
   /* Enhanced glow effects */
   .glow-electric {
     box-shadow: 

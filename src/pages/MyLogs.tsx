@@ -38,7 +38,7 @@ export default function MyLogs() {
       <h1 className="text-2xl font-semibold mb-4">My Logs</h1>
       <div className="space-y-2">
         {logs.map(l => (
-          <Link key={l.id} to={`/log/${l.id}`} className="block border rounded p-3 hover:bg-gray-50">
+          <Link key={l.id} to={`/log/${l.id}`} className="block card p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{l.title}</div>
