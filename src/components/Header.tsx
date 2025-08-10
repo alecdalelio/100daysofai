@@ -19,18 +19,44 @@ export default function Header() {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [hasSyllabus, setHasSyllabus] = useState<boolean>(true)
 
+  const loadProfile = async () => {
+    if (!userId) { setProfile(null); return }
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle()
+    setProfile(data as any)
+  }
+
   useEffect(() => {
     let mounted = true
-    async function load() {
-      if (!userId) { setProfile(null); return }
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-      if (mounted) setProfile(data as any)
-      // check if user already has a syllabus
+    if (!userId) { setProfile(null); return }
+    // initial load
+    loadProfile()
+    // check syllabus once
+    ;(async () => {
       const { data: syl } = await supabase.from('syllabi').select('id').eq('user_id', userId).limit(1)
       setHasSyllabus(!!(syl && syl.length))
+    })()
+
+    // realtime updates for this user's profile
+    const channel = supabase
+      .channel('profile-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => {
+        if (mounted) loadProfile()
+      })
+      .subscribe()
+
+    // listen for explicit save event from Account page
+    const onProfileSaved = () => { if (mounted) loadProfile() }
+    window.addEventListener('profile:saved', onProfileSaved)
+
+    return () => {
+      mounted = false
+      window.removeEventListener('profile:saved', onProfileSaved)
+      supabase.removeChannel(channel)
     }
-    load()
-    return () => { mounted = false }
   }, [userId])
 
   // close on outside click / Esc
@@ -83,7 +109,7 @@ export default function Header() {
                 ) : (
                   <div className="h-7 w-7 rounded-full border border-gray-300 dark:border-white/20 bg-white/60 dark:bg-white/10" />
                 )}
-                <span className="text-gray-900 dark:text-gray-100">{profile?.username ?? 'Account'}</span>
+                <span className="text-gray-900 dark:text-gray-100">{profile?.username || profile?.display_name || 'Account'}</span>
               </button>
               <div
                 role="menu"

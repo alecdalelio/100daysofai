@@ -15,28 +15,75 @@ export default function MyLogs() {
   const { userId } = useAuth()
   const [logs, setLogs] = useState<Log[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!userId) return
+    let cancelled = false
     async function load() {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('logs')
-        .select('id,title,day,is_published,created_at')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-      if (!error && data) setLogs(data as any)
-      setLoading(false)
+      if (!userId) {
+        // No user – clear and stop loading so we render an empty state instead of a blank page
+        if (!cancelled) {
+          setLogs([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const { data, error } = await supabase
+          .from('logs')
+          .select('id,title,day,is_published,created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+        if (!cancelled) {
+          if (error) {
+            console.error('Failed to load my logs:', error)
+            setError(error.message)
+            setLogs([])
+          } else if (data) {
+            setLogs(data as any)
+          }
+          setLoading(false)
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          console.error('Unexpected error loading logs:', e)
+          setError(e?.message ?? 'Unexpected error')
+          setLoading(false)
+        }
+      }
     }
     load()
+    return () => { cancelled = true }
   }, [userId])
 
-  if (loading) return null
+  // Safety: stop showing spinner forever; after 8s, stop loading so the empty-state/CTA shows
+  useEffect(() => {
+    if (!loading) return
+    const t = setTimeout(() => {
+      setLoading(false)
+    }, 8000)
+    return () => clearTimeout(t)
+  }, [loading, logs.length, error])
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl p-6">
+        <div className="card p-4 animate-pulse">Loading your logs…</div>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="text-2xl font-semibold mb-4">My Logs</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">My Logs</h1>
+        <Link to="/new-log" className="btn btn-primary focus-ring">New Log</Link>
+      </div>
       <div className="space-y-2">
+        {error && (
+          <div className="card p-3 text-sm text-red-500">{error}</div>
+        )}
         {logs.map(l => (
           <Link key={l.id} to={`/log/${l.id}`} className="block card p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
             <div className="flex items-center justify-between">
@@ -48,7 +95,12 @@ export default function MyLogs() {
             </div>
           </Link>
         ))}
-        {logs.length === 0 && <p className="text-sm text-gray-500">No logs yet.</p>}
+        {logs.length === 0 && (
+          <div className="card p-6 text-sm">
+            <p className="text-gray-500 mb-3">No logs yet.</p>
+            <Link to="/new-log" className="btn btn-secondary focus-ring">Create your first log</Link>
+          </div>
+        )}
       </div>
     </div>
   )

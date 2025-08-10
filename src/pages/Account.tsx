@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../lib/supabase'
+import { cn } from '../lib/utils'
 
 export default function Account() {
   const { userId } = useAuth()
@@ -9,6 +10,8 @@ export default function Account() {
   const [avatarGradient, setAvatarGradient] = useState('')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [usernameError, setUsernameError] = useState<string | null>(null)
+  const [status, setStatus] = useState<'idle'|'saving'|'success'|'error'>('idle')
 
   const gradients = [
     { id: 'grad-1', className: 'bg-gradient-to-tr from-pink-500 to-yellow-500' },
@@ -38,14 +41,63 @@ export default function Account() {
     e.preventDefault()
     setSaving(true)
     setMsg(null)
-    const { error } = await supabase.from('profiles').upsert({
-      id: userId,
-      username: username || null,
-      display_name: displayName || null,
-      avatar_url: avatarGradient || null,
-    })
-    setSaving(false)
-    setMsg(error ? error.message : 'Saved.')
+    setUsernameError(null)
+    setStatus('saving')
+
+    const cleanUsername = username.trim() || null
+    const TIMEOUT_MS = 15000
+    const withTimeout = <T,>(p: Promise<T>) =>
+      Promise.race([
+        p,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Request timed out. Please try again.')), TIMEOUT_MS)),
+      ])
+
+    try {
+      // Pre-check for duplicate username to give instant, reliable feedback
+      if (cleanUsername) {
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', cleanUsername)
+          .neq('id', userId)
+          .limit(1)
+          .maybeSingle()
+        if (existing) {
+          setStatus('error')
+          setUsernameError('That username is taken. Please choose another.')
+          setMsg('Could not save profile.')
+          return
+        }
+      }
+      const { error } = await withTimeout(
+        supabase.from('profiles').upsert({
+          id: userId,
+          username: cleanUsername,
+          display_name: displayName || null,
+          avatar_url: avatarGradient || null,
+        })
+      )
+      if (error) {
+        setStatus('error')
+        // Duplicate username handling
+        if ((error as any)?.code === '23505' || /duplicate key|unique constraint/i.test(error.message)) {
+          setUsernameError('That username is taken. Please choose another.')
+          setMsg('Could not save profile.')
+        } else {
+          setMsg(error.message)
+        }
+        return
+      }
+      setStatus('success')
+      setMsg('Saved.')
+      // signal other tabs/components (like Header) to refresh profile
+      window.dispatchEvent(new Event('profile:saved'))
+    } catch (e: any) {
+      setStatus('error')
+      setMsg(e?.message || 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -55,10 +107,14 @@ export default function Account() {
         <div>
           <label className="block text-sm mb-1">Username (unique)</label>
           <input
-            className="w-full border rounded p-2 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+            className={cn(
+              'w-full border rounded p-2 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100',
+              usernameError ? 'border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500' : ''
+            )}
             value={username}
             onChange={e=>setUsername(e.target.value)}
           />
+          {usernameError && <p className="text-sm text-red-600 mt-1">{usernameError}</p>}
         </div>
         <div>
           <label className="block text-sm mb-1">Display name</label>
@@ -85,7 +141,8 @@ export default function Account() {
           </div>
         </div>
         <button className="border rounded px-4 py-2" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
-        {msg && <p className="text-sm">{msg}</p>}
+        {status === 'error' && msg && <p className="text-sm mt-2 text-red-600">{msg}</p>}
+        {status === 'success' && msg && <p className="text-sm mt-2 text-green-600">{msg}</p>}
       </form>
     </div>
   )
