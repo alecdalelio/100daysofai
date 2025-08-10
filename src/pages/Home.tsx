@@ -17,9 +17,16 @@ const Home = () => {
       try {
         const { data, error } = await supabase
           .from('logs')
-          .select('*')
+          .select(`
+            id,
+            title,
+            summary,
+            day,
+            created_at,
+            profiles:profiles!logs_user_fk ( username )
+          `)
           .eq('is_published', true)
-          .order('day', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(5);
 
         if (error) {
@@ -122,9 +129,12 @@ const Home = () => {
                              {entry.created_at ? new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
                            </span>
                          </div>
-                         <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-electric transition-all duration-500 leading-tight">
-                           {entry.title}
-                         </CardTitle>
+                          <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-electric transition-all duration-500 leading-tight">
+                            {entry.title}
+                          </CardTitle>
+                          <div className="text-sm text-muted-foreground">
+                            By {entry?.profiles?.username || 'Unknown'}
+                          </div>
                        </CardHeader>
                        <CardContent>
                          <CardDescription className="text-lg leading-relaxed">
