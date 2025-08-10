@@ -1,0 +1,8 @@
+{
+  "_comment": "SPA rewrite required for React BrowserRouter routing on Vercel to avoid 404 errors when directly accessing nested client-side routes (e.g., /onboarding).",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
+
+
