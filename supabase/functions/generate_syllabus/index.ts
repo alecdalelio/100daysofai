@@ -280,40 +280,72 @@ ${JSON.stringify(JSON_SCHEMA_EXAMPLE, null, 2)}`
       throw new Error("Generated plan is missing required fields (title, tracks)")
     }
 
-    // Fill in missing weeks if OpenAI truncated due to token limits
+    // AGGRESSIVE week filling - ensure ALL tracks have complete weeks
     const totalWeeks = Math.ceil((answers.duration_days ?? 100) / 7)
+    console.log(`=== WEEK FILLING LOGIC START - Target: ${totalWeeks} weeks ===`)
+    
     for (const track of plan.tracks) {
       if (track.weeks && Array.isArray(track.weeks)) {
         const weekNumbers = track.weeks.map(w => w.week).sort((a, b) => a - b)
-        const maxWeek = Math.max(...weekNumbers)
+        const maxWeek = weekNumbers.length > 0 ? Math.max(...weekNumbers) : 0
         
-        console.log(`Track "${track.name}" has weeks: ${weekNumbers.join(', ')}. Expected: ${totalWeeks} weeks total.`)
+        console.log(`Track "${track.name}" currently has ${weekNumbers.length} weeks: [${weekNumbers.join(', ')}]. Max week: ${maxWeek}. Target: ${totalWeeks} weeks.`)
         
-        // If we're missing weeks after the last generated week, fill them in
-        if (maxWeek < totalWeeks) {
-          console.log(`Filling in missing weeks ${maxWeek + 1}-${totalWeeks} for track "${track.name}"`)
+        // Always fill if we have less than total weeks, regardless of max week number
+        if (weekNumbers.length < totalWeeks) {
+          console.log(`🔧 FILLING MISSING WEEKS for track "${track.name}" - current: ${weekNumbers.length}, target: ${totalWeeks}`)
           
-          for (let week = maxWeek + 1; week <= totalWeeks; week++) {
-            const weekTheme = `Week ${week}: Advanced ${track.name}`
+          // Find the highest week number and continue from there
+          let nextWeek = maxWeek + 1
+          const weeksToAdd = totalWeeks - weekNumbers.length
+          
+          for (let i = 0; i < weeksToAdd; i++) {
+            const weekNumber = nextWeek + i
+            const weekTheme = `Week ${weekNumber}: Advanced ${track.name.split(' ')[0]}`
             const basicWeek = {
-              week,
+              week: weekNumber,
               theme: weekTheme,
               tasks: [
-                `Continue building ${track.name.toLowerCase()} skills`,
-                `Practice advanced concepts from previous weeks`, 
-                `Work on portfolio project integration`,
-                `Prepare for final deliverables`
+                `Advanced ${track.name.toLowerCase()} techniques`,
+                `Apply learned concepts to real projects`, 
+                `Portfolio development and refinement`,
+                `Prepare for final milestones`
               ]
             }
             track.weeks.push(basicWeek)
-            console.log(`Added missing week ${week} to track "${track.name}"`)
+            console.log(`✅ Added week ${weekNumber} to track "${track.name}": ${weekTheme}`)
           }
           
           // Sort weeks by number
           track.weeks.sort((a, b) => a.week - b.week)
+          console.log(`✅ Track "${track.name}" now has ${track.weeks.length} weeks after filling`)
+        } else {
+          console.log(`✅ Track "${track.name}" already has sufficient weeks (${weekNumbers.length}/${totalWeeks})`)
         }
+      } else {
+        // Track has no weeks at all - create all weeks
+        console.log(`🔧 Track "${track.name}" has NO weeks - creating all ${totalWeeks} weeks`)
+        track.weeks = []
+        
+        for (let week = 1; week <= totalWeeks; week++) {
+          const weekTheme = `Week ${week}: ${track.name} Fundamentals`
+          const basicWeek = {
+            week,
+            theme: weekTheme,
+            tasks: [
+              `Learn ${track.name.toLowerCase()} concepts`,
+              `Practice with hands-on exercises`,
+              `Build portfolio components`,
+              `Review and prepare for next week`
+            ]
+          }
+          track.weeks.push(basicWeek)
+        }
+        console.log(`✅ Created all ${totalWeeks} weeks for track "${track.name}"`)
       }
     }
+    
+    console.log(`=== WEEK FILLING LOGIC END ===`)
 
     // Log final week counts for verification
     for (const track of plan.tracks) {

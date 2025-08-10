@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { queryDirectly } from '../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
+import jsPDF from 'jspdf'
 
 export default function Syllabus() {
   const { id } = useParams()
@@ -9,6 +10,7 @@ export default function Syllabus() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [downloadingPDF, setDownloadingPDF] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -132,9 +134,153 @@ export default function Syllabus() {
   const plan = data.plan || {}
 
   const downloadPDF = async () => {
-    // TODO: Implement PDF generation
-    console.log('PDF download requested for:', data.id)
-    alert('PDF download coming soon! For now, you can copy the syllabus content.')
+    setDownloadingPDF(true)
+    try {
+      const doc = new jsPDF()
+    const plan = data.plan || {}
+    
+    // Set up basic styling
+    let yPosition = 20
+    const pageWidth = doc.internal.pageSize.width
+    const margin = 20
+    const maxWidth = pageWidth - 2 * margin
+    
+    // Title
+    doc.setFontSize(20)
+    doc.setFont('helvetica', 'bold')
+    doc.text(plan.title || 'Learning Syllabus', margin, yPosition)
+    yPosition += 15
+    
+    // Summary
+    if (plan.summary) {
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'normal')
+      const summaryLines = doc.splitTextToSize(plan.summary, maxWidth)
+      doc.text(summaryLines, margin, yPosition)
+      yPosition += summaryLines.length * 5 + 10
+    }
+    
+    // Duration info
+    doc.setFontSize(10)
+    doc.text(`${plan.duration_days || '—'} days · ~${plan.weekly_hours || '—'} hrs/week`, margin, yPosition)
+    yPosition += 15
+    
+    // Deliverables
+    if (Array.isArray(plan.deliverables) && plan.deliverables.length > 0) {
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Key Deliverables', margin, yPosition)
+      yPosition += 10
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      plan.deliverables.forEach((d) => {
+        const text = `• ${d.name} (Day ${d.due_day})`
+        doc.text(text, margin + 5, yPosition)
+        yPosition += 6
+        if (d.description) {
+          const descLines = doc.splitTextToSize(d.description, maxWidth - 10)
+          doc.text(descLines, margin + 10, yPosition)
+          yPosition += descLines.length * 4 + 3
+        }
+      })
+      yPosition += 10
+    }
+    
+    // Learning Tracks
+    if (Array.isArray(plan.tracks)) {
+      plan.tracks.forEach((track, trackIndex) => {
+        // Check if we need a new page
+        if (yPosition > 250) {
+          doc.addPage()
+          yPosition = 20
+        }
+        
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.text(track.name, margin, yPosition)
+        yPosition += 8
+        
+        if (track.objective) {
+          doc.setFontSize(10)
+          doc.setFont('helvetica', 'normal')
+          const objLines = doc.splitTextToSize(track.objective, maxWidth)
+          doc.text(objLines, margin, yPosition)
+          yPosition += objLines.length * 4 + 8
+        }
+        
+        // Milestones
+        if (Array.isArray(track.milestones)) {
+          doc.setFontSize(12)
+          doc.setFont('helvetica', 'bold')
+          doc.text('Milestones:', margin, yPosition)
+          yPosition += 6
+          
+          doc.setFontSize(9)
+          doc.setFont('helvetica', 'normal')
+          track.milestones.forEach((m) => {
+            doc.text(`• Day ${m.day}: ${m.title}`, margin + 5, yPosition)
+            yPosition += 5
+          })
+          yPosition += 5
+        }
+        
+        // Weeks
+        if (Array.isArray(track.weeks)) {
+          track.weeks.forEach((week) => {
+            // Check if we need a new page
+            if (yPosition > 240) {
+              doc.addPage()
+              yPosition = 20
+            }
+            
+            doc.setFontSize(12)
+            doc.setFont('helvetica', 'bold')
+            doc.text(`Week ${week.week}: ${week.theme}`, margin, yPosition)
+            yPosition += 8
+            
+            // Tasks
+            if (Array.isArray(week.tasks)) {
+              doc.setFontSize(9)
+              doc.setFont('helvetica', 'normal')
+              week.tasks.forEach((task) => {
+                const taskText = typeof task === 'string' ? task : (task.task || `Day ${task.day}: ${task.task}`)
+                const taskLines = doc.splitTextToSize(`• ${taskText}`, maxWidth - 10)
+                doc.text(taskLines, margin + 5, yPosition)
+                yPosition += taskLines.length * 4 + 1
+              })
+              yPosition += 3
+            }
+            
+            // Resources
+            if (Array.isArray(week.resources) && week.resources.length > 0) {
+              doc.setFontSize(8)
+              doc.setFont('helvetica', 'italic')
+              doc.text('Resources:', margin + 5, yPosition)
+              yPosition += 4
+              
+              week.resources.forEach((resource) => {
+                doc.text(`• ${resource.title}`, margin + 10, yPosition)
+                yPosition += 4
+              })
+              yPosition += 3
+            }
+          })
+        }
+        
+        yPosition += 10
+      })
+    }
+    
+    // Save the PDF
+    const filename = `${plan.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'syllabus'}.pdf`
+    doc.save(filename)
+    } catch (error) {
+      console.error('PDF generation error:', error)
+      alert('Error generating PDF. Please try again.')
+    } finally {
+      setDownloadingPDF(false)
+    }
   }
 
   return (
@@ -151,9 +297,10 @@ export default function Syllabus() {
         <div className="flex gap-3">
           <button 
             onClick={downloadPDF}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium"
+            disabled={downloadingPDF}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-4 py-2 rounded-lg font-medium"
           >
-            📄 Download Full Syllabus PDF
+            {downloadingPDF ? '📄 Generating PDF...' : '📄 Download Full Syllabus PDF'}
           </button>
           <button 
             onClick={() => window.print()}
