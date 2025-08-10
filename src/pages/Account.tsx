@@ -54,11 +54,19 @@ export default function Account() {
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
           <label className="block text-sm mb-1">Username (unique)</label>
-          <input className="w-full border rounded p-2" value={username} onChange={e=>setUsername(e.target.value)} />
+          <input
+            className="w-full border rounded p-2 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+            value={username}
+            onChange={e=>setUsername(e.target.value)}
+          />
         </div>
         <div>
           <label className="block text-sm mb-1">Display name</label>
-          <input className="w-full border rounded p-2" value={displayName} onChange={e=>setDisplayName(e.target.value)} />
+          <input
+            className="w-full border rounded p-2 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+            value={displayName}
+            onChange={e=>setDisplayName(e.target.value)}
+          />
         </div>
         <div>
           <label className="block text-sm mb-2">Choose Avatar</label>
