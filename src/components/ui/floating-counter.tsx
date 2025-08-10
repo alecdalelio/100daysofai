@@ -1,12 +1,38 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/auth/AuthProvider";
 
 const FloatingCounter = () => {
   const location = useLocation();
-  const currentDay = 0; // This could be dynamic based on current date
+  const { userId } = useAuth();
+  const [currentDay, setCurrentDay] = useState(0);
   const totalDays = 100;
   const progress = (currentDay / totalDays) * 100;
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadProgress() {
+      // Use owner scope if signed in; otherwise public published scope
+      let query = supabase
+        .from('logs')
+        .select('day')
+        .order('day', { ascending: false })
+        .limit(1);
+      query = userId ? query.eq('user_id', userId) : query.eq('is_published', true);
+      const { data, error } = await query;
+      if (!isMounted) return;
+      if (!error && data && data.length > 0) {
+        setCurrentDay((data[0] as any).day ?? 0);
+      } else if (!error) {
+        setCurrentDay(0);
+      }
+    }
+    loadProgress();
+    return () => { isMounted = false };
+  }, [userId]);
 
   // Only show on main pages
   const showCounter = ['/', '/log', '/projects', '/stack'].includes(location.pathname);

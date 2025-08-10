@@ -3,14 +3,31 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, Share2, ExternalLink, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import FloatingCounter from "@/components/ui/floating-counter";
+import { supabase } from "@/lib/supabase";
 
 const DailyLog = () => {
-  const [entries] = useState([]);
+  const [entries, setEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const maxDay = useMemo(() => (entries.length ? Math.max(...entries.map((e:any)=>Number(e.day)||0)) : 0), [entries]);
+
+  useEffect(() => {
+    async function fetchPublished() {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('logs')
+        .select('*')
+        .eq('is_published', true)
+        .order('created_at', { ascending: false });
+      if (!error) setEntries(data as any[] ?? []);
+      setLoading(false);
+    }
+    fetchPublished();
+  }, []);
 
   const handleShare = (entry: any) => {
-    const url = `${window.location.origin}/log/day-${entry.day}`;
+    const url = `${window.location.origin}/log/${entry.id}`;
     navigator.clipboard.writeText(url);
     // You could show a toast here
   };
@@ -37,11 +54,15 @@ const DailyLog = () => {
 
             {/* Entries */}
             <div className="space-y-12">
-              {entries.length > 0 ? (
+              {loading ? (
+                <Card className="glow-primary hover:glow-electric transition-all duration-500 hover-lift">
+                  <CardContent className="py-16 text-center">Loading…</CardContent>
+                </Card>
+              ) : entries.length > 0 ? (
                 entries.map((entry, index) => (
+                  <Link key={entry.id ?? index} to={`/log/${entry.id}`} className="block">
                   <Card 
-                    key={entry.day} 
-                    className="glow-primary hover:glow-electric transition-all duration-500 group hover-lift"
+                    className="glow-primary hover:glow-electric transition-all duration-500 group hover-lift cursor-pointer"
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
                     <CardHeader>
@@ -52,27 +73,20 @@ const DailyLog = () => {
                           </Badge>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground font-mono">
                             <Calendar className="w-4 h-4" />
-                            {entry.date}
+                            {entry.created_at ? new Date(entry.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleShare(entry)}
-                            className="h-8 w-8 p-0 hover-lift"
-                          >
-                            <Share2 className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 hover-lift"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </Button>
-                        </div>
+                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShare(entry); }}
+                              className="h-8 w-8 p-0 hover-lift"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                       </div>
                       
                       <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-cyber transition-all duration-500 leading-tight">
@@ -82,7 +96,7 @@ const DailyLog = () => {
                   
                     <CardContent className="space-y-6">
                       <div className="prose prose-invert max-w-none">
-                        {entry.content.split('\n').map((paragraph, idx) => {
+                        {(entry.content ?? '').split('\n').map((paragraph, idx) => {
                           if (paragraph.startsWith('**') && paragraph.endsWith('**')) {
                             return (
                               <h4 key={idx} className="text-lg font-semibold mt-6 mb-2 text-electric">
@@ -107,36 +121,9 @@ const DailyLog = () => {
                           return <br key={idx} />;
                         })}
                       </div>
-                      
-                      {/* Meta info */}
-                      <div className="flex flex-wrap gap-4 pt-4 border-t border-border">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">Time:</span>
-                          <Badge variant="outline">{entry.timeSpent}</Badge>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">Tools:</span>
-                          <div className="flex gap-1">
-                            {entry.tools.map((tool) => (
-                              <Badge key={tool} variant="outline" className="text-xs">
-                                {tool}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Tags */}
-                      <div className="flex flex-wrap gap-2">
-                        {entry.tags.map((tag) => (
-                          <Badge key={tag} variant="secondary" className="hover:glow-electric transition-all cursor-pointer">
-                            #{tag}
-                          </Badge>
-                        ))}
-                      </div>
                     </CardContent>
-                  </Card>
+                    </Card>
+                  </Link>
                 ))
               ) : (
                 <Card className="glow-primary hover:glow-electric transition-all duration-500 hover-lift">
@@ -171,10 +158,10 @@ const DailyLog = () => {
                 <div className="w-48 h-3 bg-muted rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-electric to-cyber transition-all duration-500 animate-shimmer"
-                    style={{ width: `${(0 / 100) * 100}%` }}
+                    style={{ width: `${(maxDay / 100) * 100}%` }}
                   />
                 </div>
-                <span className="text-sm font-mono font-bold">0/100 days</span>
+                <span className="text-sm font-mono font-bold">{maxDay}/100 days</span>
               </div>
             </div>
           </div>

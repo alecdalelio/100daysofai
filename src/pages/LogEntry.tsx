@@ -1,18 +1,32 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, ArrowLeft, Share2, ExternalLink } from "lucide-react";
+import { Calendar, ArrowLeft, Share2, ExternalLink, Trash2 } from "lucide-react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import FloatingCounter from "@/components/ui/floating-counter";
+import { useAuth } from "@/auth/AuthProvider";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 const LogEntry = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { userId } = useAuth();
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function fetchEntry() {
@@ -60,6 +74,23 @@ const LogEntry = () => {
 
     fetchEntry();
   }, [id]);
+
+  const isOwner = (entry as any)?.user_id && userId && (entry as any).user_id === userId;
+
+  async function handleDeleteConfirmed() {
+    if (!id) return;
+    try {
+      setDeleting(true);
+      const { error } = await supabase.from('logs').delete().eq('id', id);
+      if (error) {
+        console.error('Failed to delete log:', error);
+        return;
+      }
+      navigate('/log');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const handleShare = () => {
     const url = `${window.location.origin}/log/${id}`;
@@ -165,6 +196,35 @@ const LogEntry = () => {
                     >
                       <ExternalLink className="w-4 h-4" />
                     </Button>
+                    {isOwner && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-8 px-2 hover-lift"
+                            disabled={deleting}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span className="sr-only">Delete</span>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete this log?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This action cannot be undone. This will permanently delete the log entry.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeleteConfirmed} disabled={deleting}>
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                   </div>
                 </div>
                 
