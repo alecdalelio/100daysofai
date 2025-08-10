@@ -26,8 +26,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.session)
       setLoading(false)
     })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession)
+      setLoading(false)
+      // naive redirect once after login if no syllabus exists
+      if (newSession?.user) {
+        const { data: syl } = await supabase.from('syllabi').select('id').eq('user_id', newSession.user.id).limit(1)
+        if ((!syl || syl.length === 0) && window.location.pathname !== '/onboarding') {
+          window.location.assign('/onboarding')
+        }
+      }
     })
     return () => {
       isMounted = false

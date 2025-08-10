@@ -9,6 +9,8 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 import Header from "./components/Header";
 import Account from "./pages/Account";
 import MyLogs from "./pages/MyLogs";
+import Onboarding from "./pages/Onboarding";
+import Syllabus from "./pages/Syllabus";
 import Home from "./pages/Home";
 import DailyLog from "./pages/DailyLog";
 import LogEntry from "./pages/LogEntry";
@@ -46,6 +48,22 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <NewLog />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute>
+                  <Onboarding />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/syllabus/:id"
+              element={
+                <ProtectedRoute>
+                  <Syllabus />
                 </ProtectedRoute>
               }
             />

@@ -17,6 +17,7 @@ export default function Header() {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const [hasSyllabus, setHasSyllabus] = useState<boolean>(true)
 
   useEffect(() => {
     let mounted = true
@@ -24,6 +25,9 @@ export default function Header() {
       if (!userId) { setProfile(null); return }
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
       if (mounted) setProfile(data as any)
+      // check if user already has a syllabus
+      const { data: syl } = await supabase.from('syllabi').select('id').eq('user_id', userId).limit(1)
+      setHasSyllabus(!!(syl && syl.length))
     }
     load()
     return () => { mounted = false }
@@ -93,6 +97,16 @@ export default function Header() {
                 >
                   Account
                 </Link>
+                {!hasSyllabus && (
+                  <Link
+                    to="/onboarding"
+                    className="block px-3 py-2 text-sm text-indigo-600 dark:text-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Create your syllabus
+                  </Link>
+                )}
                 <Link
                   to="/my/logs"
                   className="block px-3 py-2 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
