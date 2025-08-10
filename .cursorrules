@@ -1,0 +1,72 @@
+project:
+  name: 100daysofai
+  stack:
+    - vite
+    - react
+    - typescript
+    - shadcn-ui
+    - tailwind
+    - supabase
+
+environment:
+  node: ">=18"
+  env_files:
+    - .env
+  required_env:
+    - VITE_SUPABASE_URL
+    - VITE_SUPABASE_ANON_KEY
+
+defaults:
+  coding_style:
+    react_components: functional
+    typescript: strict_prefer
+    forms: react-hook-form + zod when validation needed
+    ui: prefer src/components/ui primitives
+  file_ownership:
+    avoid_edit:
+      - src/components/ui/**
+    prefer_edit:
+      - src/pages/**
+      - src/components/**
+      - src/lib/**
+  routing:
+    file: src/App.tsx
+    library: react-router-dom
+
+workflows:
+  run_dev: npm run dev
+  build: npm run build
+  lint: npm run lint
+  typecheck: npm run typecheck
+  preview: npm run preview
+
+guards:
+  - description: Must not commit secrets
+    check: ensure no keys or tokens are added to source
+  - description: All edits must compile, lint, and typecheck before completion
+    check: run build, lint, typecheck
+  - description: Use Supabase client and helpers
+    check: import from src/lib/supabase.ts
+  - description: Keep UI consistent with shadcn
+    check: reuse primitives from src/components/ui
+
+supabase:
+  client_file: src/lib/supabase.ts
+  helpers:
+    - callFn
+    - signInWithEmail
+    - signUpWithEmail
+    - signInWithProvider
+    - signOut
+
+pull_requests:
+  message_guidelines:
+    - Summarize change, rationale, and user impact
+    - Include any env/migration steps
+    - List acceptance criteria and how verified locally
+
+performance:
+  avoid_unnecessary_re_renders: true
+  prefer_memoization_for_heavy_derivations: true
+
+
