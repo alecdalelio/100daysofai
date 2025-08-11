@@ -9,14 +9,39 @@ export type ProfileRow = {
 }
 
 export function useProfile() {
-  const [profile, setProfile] = useState<ProfileRow | null>(null)
+  const [profile, setProfile] = useState<ProfileRow | null>(() => {
+    try {
+      const raw = localStorage.getItem('profile:last')
+      return raw ? (JSON.parse(raw) as ProfileRow) : null
+    } catch {
+      return null
+    }
+  })
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const userIdRef = useRef<string | null>(null)
 
   const fetchProfile = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      // Resolve auth with a timeout and fallbacks
+      const timeout = (ms: number) => new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Auth timed out')), ms))
+      let session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'] | null = null
+      try {
+        const sessRes = (await Promise.race([
+          supabase.auth.getSession(),
+          timeout(2500),
+        ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>
+        session = sessRes?.data?.session ?? null
+      } catch {}
+      if (!session) {
+        try {
+          const userRes = (await Promise.race([
+            supabase.auth.getUser(),
+            timeout(2500),
+          ])) as Awaited<ReturnType<typeof supabase.auth.getUser>>
+          session = userRes?.data?.user ? { ...({} as any), user: userRes.data.user, access_token: (userRes as any)?.data?.session?.access_token } : null
+        } catch {}
+      }
       const user = session?.user
       if (!user) { setProfile(null); setIsLoading(false); return }
       userIdRef.current = user.id
@@ -27,7 +52,7 @@ export function useProfile() {
         method: 'GET',
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
         }
       })
       const rows = await resp.json()
@@ -41,6 +66,14 @@ export function useProfile() {
       setProfile(mapped)
       try { if (mapped) localStorage.setItem('profile:last', JSON.stringify(mapped)) } catch {}
     } catch (e: any) {
+      // On failure, try to hydrate from cache so the Header shows something
+      try {
+        const raw = localStorage.getItem('profile:last')
+        if (raw) {
+          const parsed = JSON.parse(raw) as ProfileRow
+          setProfile(parsed)
+        }
+      } catch {}
       setError(e?.message || 'Failed to load profile')
     } finally {
       setIsLoading(false)

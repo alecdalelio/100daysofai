@@ -62,16 +62,33 @@ export const signOut = () => supabase.auth.signOut()
 
 // Helper for authenticated REST calls with timeout
 export async function restFetch(
-  path: string, 
-  init: RequestInit & { timeoutMs?: number } = {}
+  path: string,
+  init: RequestInit & { timeoutMs?: number; token?: string } = {}
 ): Promise<Response> {
-  const { timeoutMs = 20000, ...fetchInit } = init
+  const { timeoutMs = 20000, token, ...fetchInit } = init
   
-  // Get user session
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.access_token) {
-    throw new Error('Not authenticated')
+  // Resolve token quickly to avoid hangs
+  let accessToken = token
+  if (!accessToken) {
+    try {
+      const authTimeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Auth timed out')), 2500))
+      const result = (await Promise.race([
+        supabase.auth.getSession(),
+        authTimeout,
+      ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>
+      accessToken = result?.data?.session?.access_token
+    } catch (e) {
+      // As a last-ditch fallback, try getUser (may not include token, but at least avoids throwing timeout here)
+      try {
+        const userResult = await supabase.auth.getUser()
+        if (userResult?.data?.user) {
+          // no token available; we will still fail with 401 below, but not with auth-timeout
+          accessToken = undefined
+        }
+      } catch {}
+    }
   }
+  if (!accessToken) throw new Error('Not authenticated')
 
   // Setup timeout
   const controller = new AbortController()
@@ -87,7 +104,7 @@ export async function restFetch(
       ...fetchInit,
       headers: {
         'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${session.access_token}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         ...fetchInit.headers,
       },

@@ -28,7 +28,7 @@ export default function Header() {
     return () => window.removeEventListener('profile:saved', onSaved)
   }, [refresh])
 
-  // Fallback: boot-time hydrate from last saved local cache
+  // Fallback: boot-time hydrate from last saved local cache and session user
   useEffect(() => {
     if (!profile) {
       try {
@@ -58,7 +58,7 @@ export default function Header() {
     }
   }, [menuOpen])
 
-  const display = profile?.username || profile?.display_name || 'Account'
+  const display = profile?.display_name || profile?.username || 'Account'
   return (
     <header className="w-full sticky top-0 z-40 bg-white/80 dark:bg-black/70 backdrop-blur border-b border-gray-200 dark:border-white/10">
       <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
