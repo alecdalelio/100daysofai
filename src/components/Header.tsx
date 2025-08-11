@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useRef, useState } from 'react'
-import { supabase, signOut } from '../lib/supabase'
+import { supabase, signOut, queryDirectly } from '../lib/supabase'
 import { Profile } from '../lib/types'
 
 export default function Header() {
@@ -19,12 +19,13 @@ export default function Header() {
     
     const loadProfile = async () => {
       if (!userId) { setProfile(null); return }
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
-      if (mounted) setProfile(data as Profile | null)
+      try {
+        const rows = await queryDirectly('profiles', { select: '*', eq: { column: 'id', value: userId }, limit: 1 })
+        const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null
+        if (mounted) setProfile(data as Profile | null)
+      } catch (e) {
+        console.error('[Header] Failed to load profile via direct fetch:', e)
+      }
     }
     
     const loadData = async () => {
