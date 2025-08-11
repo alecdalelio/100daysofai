@@ -257,3 +257,26 @@ export async function callEdgeFunction<T = unknown>(
     throw fetchError
   }
 }
+
+// Ensures a profile row exists for the authenticated user
+export async function ensureProfile(): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) return
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort('client-timeout'), 10000)
+  try {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ensure_profile`
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}

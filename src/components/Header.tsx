@@ -3,11 +3,11 @@ import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useRef, useState } from 'react'
 import { supabase, signOut, queryDirectly } from '../lib/supabase'
-import { Profile } from '../lib/types'
+import { gradientClass } from '@/constants/gradients'
 
 export default function Header() {
   const { userId } = useAuth()
-  const [profile, setProfile] = useState<Profile | null>(null)
+  const [profile, setProfile] = useState<any | null>(null)
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -15,10 +15,10 @@ export default function Header() {
 
   useEffect(() => {
     let mounted = true
-    if (!userId) { setProfile(null); return }
+    if (!userId) { /* keep last-known profile during transient auth gaps */ return }
     
     const loadProfile = async () => {
-      if (!userId) { setProfile(null); return }
+      if (!userId) { return }
       try {
         const rows = await queryDirectly('profiles', { select: '*', eq: { column: 'id', value: userId }, limit: 1 })
         const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null
@@ -92,19 +92,9 @@ export default function Header() {
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
               >
-                {profile?.avatar_url ? (
-                  profile.avatar_url.startsWith('grad-') ? (
-                    <div
-                      className={`h-7 w-7 rounded-full ${
-                        profile.avatar_url === 'grad-1' ? 'bg-gradient-to-tr from-pink-500 to-yellow-500' :
-                        profile.avatar_url === 'grad-2' ? 'bg-gradient-to-tr from-blue-500 to-green-400' :
-                        profile.avatar_url === 'grad-3' ? 'bg-gradient-to-tr from-purple-500 to-pink-400' :
-                        profile.avatar_url === 'grad-4' ? 'bg-gradient-to-tr from-teal-400 to-cyan-500' :
-                        profile.avatar_url === 'grad-5' ? 'bg-gradient-to-tr from-orange-400 to-red-500' :
-                        profile.avatar_url === 'grad-6' ? 'bg-gradient-to-tr from-indigo-500 to-sky-400' :
-                        ''
-                      }`}
-                    />
+                {profile?.avatar_gradient || profile?.avatar_url ? (
+                  (profile.avatar_gradient ?? profile.avatar_url)?.startsWith('grad-') ? (
+                    <div className={`h-7 w-7 rounded-full ${gradientClass(profile.avatar_gradient ?? profile.avatar_url)}`} />
                   ) : (
                     <img src={profile.avatar_url} alt="avatar" className="h-7 w-7 rounded-full object-cover" />
                   )
