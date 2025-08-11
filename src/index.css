@@ -128,6 +128,28 @@
   .btn-secondary { @apply bg-gray-100 text-gray-900 border border-gray-200 hover:bg-gray-200; }
   html.dark .btn-secondary { @apply bg-gray-800 text-gray-100 border-white/10 hover:bg-gray-700; }
 
+  /* Form controls inside cards - ensure proper contrast in dark mode */
+  .card input,
+  .card select,
+  .card textarea {
+    @apply w-full bg-white text-gray-900 border border-gray-200 rounded-md;
+  }
+  html.dark .card input,
+  html.dark .card select,
+  html.dark .card textarea {
+    @apply bg-gray-900 text-gray-100 placeholder:text-gray-400 border-white/10;
+  }
+  .card input:focus,
+  .card select:focus,
+  .card textarea:focus {
+    @apply outline-none ring-2 ring-indigo-500 ring-offset-2;
+  }
+  html.dark .card input:focus,
+  html.dark .card select:focus,
+  html.dark .card textarea:focus {
+    @apply ring-offset-black;
+  }
+
   /* Tokens: Focus ring visible on dark */
   .focus-ring { @apply outline-none ring-2 ring-indigo-500 ring-offset-2; }
   html.dark .focus-ring { @apply ring-offset-black; }
