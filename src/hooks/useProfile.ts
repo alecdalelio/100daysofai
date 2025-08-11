@@ -20,6 +20,21 @@ export function useProfile() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const userIdRef = useRef<string | null>(null)
+  
+  const cacheKey = useCallback((uid?: string | null) => {
+    // Currently using a single-slot cache; keep API for future per-user keys
+    return 'profile:last'
+  }, [])
+
+  const hydrateFromCache = useCallback(async () => {
+    try {
+      const raw = localStorage.getItem(cacheKey(userIdRef.current))
+      if (raw) {
+        const parsed = JSON.parse(raw) as ProfileRow
+        setProfile(parsed)
+      }
+    } catch {}
+  }, [cacheKey])
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -43,7 +58,12 @@ export function useProfile() {
         } catch {}
       }
       const user = session?.user
-      if (!user) { setProfile(null); setIsLoading(false); return }
+      if (!user) {
+        console.log('[useProfile] auth user temporarily null — keeping cached profile')
+        setIsLoading(false)
+        setTimeout(() => { void fetchProfile() }, 750)
+        return
+      }
       userIdRef.current = user.id
       setIsLoading(true)
       setError(null)
@@ -64,11 +84,11 @@ export function useProfile() {
         avatar_gradient: row.avatar_gradient ?? row.avatar_url ?? null,
       } : null
       setProfile(mapped)
-      try { if (mapped) localStorage.setItem('profile:last', JSON.stringify(mapped)) } catch {}
+      try { if (mapped) localStorage.setItem(cacheKey(user.id), JSON.stringify(mapped)) } catch {}
     } catch (e: any) {
       // On failure, try to hydrate from cache so the Header shows something
       try {
-        const raw = localStorage.getItem('profile:last')
+        const raw = localStorage.getItem(cacheKey(userIdRef.current))
         if (raw) {
           const parsed = JSON.parse(raw) as ProfileRow
           setProfile(parsed)
@@ -81,6 +101,29 @@ export function useProfile() {
   }, [])
 
   useEffect(() => { fetchProfile() }, [fetchProfile])
+
+  // React to auth state changes: only clear on SIGNED_OUT; otherwise hydrate then fetch
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
+      if (event === 'SIGNED_OUT') {
+        const uid = userIdRef.current
+        try {
+          if (uid) localStorage.removeItem(cacheKey(uid))
+          else localStorage.removeItem(cacheKey(null))
+        } catch {}
+        console.log('[useProfile] signed out — clearing profile cache')
+        setProfile(null)
+        setIsLoading(false)
+        return
+      }
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        void hydrateFromCache().then(() => fetchProfile())
+      }
+    })
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [cacheKey, fetchProfile, hydrateFromCache])
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null
