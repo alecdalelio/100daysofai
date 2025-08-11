@@ -75,7 +75,6 @@ export default function Account() {
       // Try direct fetch with timeout to bypass any helpers
       console.log('[Account] Using direct fetch with AbortController')
       console.log('[Account] NEW CODE IS RUNNING - JWT VALIDATION ADDED')
-      alert('NEW CODE IS RUNNING!')
       
       // Get session directly and validate the token
       let activeSession
@@ -122,62 +121,36 @@ export default function Account() {
         console.log('[Account] Session refreshed successfully')
       }
       
-      // Direct fetch with timeout
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => {
-        console.log('[Account] Aborting fetch after 10s')
-        controller.abort()
-      }, 10000)
-      
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?on_conflict=id&select=*`
-      console.log('[Account] Making direct fetch to:', url)
-      
-      try {
-        const resp = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${activeSession.access_token}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation,resolution=merge-duplicates',
+      // Persist via Supabase upsert
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(
+          {
+            id: userId,
+            username: cleanUsername,
+            display_name: displayName || null,
+            avatar_url: avatarGradient || null,
           },
-          body: JSON.stringify([
-            {
-              id: userId,
-              username: cleanUsername,
-              display_name: displayName || null,
-              avatar_url: avatarGradient || null,
-            },
-          ]),
-          signal: controller.signal,
-        })
-        
-        clearTimeout(timeoutId)
-        console.log('[Account] Fetch completed! Status:', resp.status)
-        
-        const txt = await resp.text()
-        console.log('[Account] Response body:', txt.slice(0, 200))
+          { onConflict: 'id' }
+        )
+        .select()
+        .single()
 
-        if (resp.ok) {
-          setStatus('success')
-          setMsg('Saved.')
-          window.dispatchEvent(new Event('profile:saved'))
-          return
-        }
-
-        if (resp.status === 409 || /duplicate key|unique/i.test(txt)) {
+      if (error) {
+        const errAny = error as unknown as { code?: string; message?: string }
+        if (errAny?.code === '23505' || /duplicate key|unique/i.test(errAny?.message ?? '')) {
           setStatus('error')
           setUsernameError('That username is taken. Please choose another.')
           setMsg('Could not save profile.')
           return
         }
-
-        throw new Error(txt || `Save failed with status ${resp.status}`)
-      } catch (fetchError) {
-        clearTimeout(timeoutId)
-        console.log('[Account] Fetch error:', fetchError)
-        throw fetchError
+        throw error
       }
+
+      setStatus('success')
+      setMsg('Saved.')
+      window.dispatchEvent(new Event('profile:saved'))
+      return
     } catch (err) {
       setStatus('error')
       const errorObj = err as { message?: string }
