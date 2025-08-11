@@ -37,13 +37,18 @@ export default function Header() {
     
     loadData()
 
-    // realtime updates for this user's profile
-    const channel = supabase
-      .channel('profile-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => {
-        if (mounted) loadProfile()
-      })
-      .subscribe()
+    // realtime updates for this user's profile (best-effort; ignore failures)
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    try {
+      channel = supabase
+        .channel('profile-updates')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => {
+          if (mounted) loadProfile()
+        })
+        .subscribe()
+    } catch (e) {
+      console.warn('[Header] Realtime subscription failed, falling back to event-based refresh only', e)
+    }
 
     // listen for explicit save event from Account page
     const onProfileSaved = () => { if (mounted) loadProfile() }
@@ -52,7 +57,7 @@ export default function Header() {
     return () => {
       mounted = false
       window.removeEventListener('profile:saved', onProfileSaved)
-      supabase.removeChannel(channel)
+      if (channel) supabase.removeChannel(channel)
     }
   }, [userId])
 

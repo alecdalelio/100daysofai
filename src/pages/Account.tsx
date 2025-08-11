@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
-import { supabase } from '../lib/supabase'
+import { supabase, queryDirectly } from '../lib/supabase'
 import { Profile } from '../lib/types'
 
 export default function Account() {
@@ -29,17 +29,21 @@ export default function Account() {
     async function load() {
       if (!userId) return
       console.log('[Account] Loading profile for userId:', userId)
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-      console.log('[Account] Profile load result:', { data, error })
-      
-      if (mounted && data) {
-        const profile = data as Profile
-        setUsername(profile.username ?? '')
-        setDisplayName(profile.display_name ?? '')
-        setAvatarGradient(profile.avatar_url ?? '')
-        console.log('[Account] Profile loaded:', profile)
-      } else if (mounted && !data && !error) {
-        console.log('[Account] No profile found - will be created on first save')
+      try {
+        const rows = await queryDirectly('profiles', { select: '*', eq: { column: 'id', value: userId }, limit: 1 })
+        const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null
+        console.log('[Account] Profile load result (direct):', data)
+        if (mounted && data) {
+          const profile = data as Profile
+          setUsername(profile.username ?? '')
+          setDisplayName(profile.display_name ?? '')
+          setAvatarGradient(profile.avatar_url ?? '')
+          console.log('[Account] Profile loaded:', profile)
+        } else if (mounted) {
+          console.log('[Account] No profile found - will be created on first save')
+        }
+      } catch (error) {
+        console.error('[Account] Failed to load profile:', error)
       }
     }
     load()
