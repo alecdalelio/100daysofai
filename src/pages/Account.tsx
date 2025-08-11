@@ -72,85 +72,51 @@ export default function Account() {
         throw new Error('User ID not available - not authenticated?')
       }
 
-      // Try direct fetch with timeout to bypass any helpers
-      console.log('[Account] Using direct fetch with AbortController')
-      console.log('[Account] NEW CODE IS RUNNING - JWT VALIDATION ADDED')
-      
-      // Get session directly and validate the token
-      let activeSession
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        activeSession = session
-        
-        if (!activeSession?.access_token) {
-          throw new Error('No session found')
-        }
-        
-        // Validate JWT format (should have 3 parts separated by dots)
-        const tokenParts = activeSession.access_token.split('.')
-        if (tokenParts.length !== 3) {
-          throw new Error('Invalid JWT format')
-        }
-        
-        console.log('[Account] Session token format valid:', activeSession.access_token.slice(0, 20) + '...')
-        
-        // Try to decode the payload to check expiration
-        try {
-          const payload = JSON.parse(atob(tokenParts[1]))
-          const now = Math.floor(Date.now() / 1000)
-          if (payload.exp && payload.exp < now) {
-            throw new Error('JWT expired')
-          }
-          console.log('[Account] JWT not expired, expires at:', new Date(payload.exp * 1000))
-        } catch (decodeError) {
-          console.warn('[Account] Could not decode JWT payload:', decodeError)
-          throw new Error('Invalid JWT payload')
-        }
-        
-      } catch (sessionError) {
-        console.log('[Account] Session/JWT issue, attempting refresh:', sessionError.message)
-        
-        // Try to refresh the session
-        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
-        
-        if (refreshError || !refreshedSession?.access_token) {
-          throw new Error(`Authentication failed: ${refreshError?.message || 'No session after refresh'}`)
-        }
-        
-        activeSession = refreshedSession
-        console.log('[Account] Session refreshed successfully')
-      }
-      
-      // Persist via Supabase upsert
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert(
+      // Persist using direct REST fetch to avoid potential supabase-js hangs
+      const token = session?.access_token
+      if (!token) throw new Error('Not authenticated')
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort('client-timeout'), 10000)
+
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?on_conflict=id&select=*`
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation,resolution=merge-duplicates',
+        },
+        body: JSON.stringify([
           {
             id: userId,
             username: cleanUsername,
             display_name: displayName || null,
             avatar_url: avatarGradient || null,
           },
-          { onConflict: 'id' }
-        )
-        .select()
-        .single()
+        ]),
+        signal: controller.signal,
+      })
 
-      if (error) {
-        const errAny = error as unknown as { code?: string; message?: string }
-        if (errAny?.code === '23505' || /duplicate key|unique/i.test(errAny?.message ?? '')) {
-          setStatus('error')
-          setUsernameError('That username is taken. Please choose another.')
-          setMsg('Could not save profile.')
-          return
-        }
-        throw error
+      clearTimeout(timeoutId)
+      const txt = await resp.text()
+
+      if (resp.ok) {
+        setStatus('success')
+        setMsg('Saved.')
+        window.dispatchEvent(new Event('profile:saved'))
+        return
       }
 
-      setStatus('success')
-      setMsg('Saved.')
-      window.dispatchEvent(new Event('profile:saved'))
-      return
+      if (resp.status === 409 || /duplicate key|unique/i.test(txt)) {
+        setStatus('error')
+        setUsernameError('That username is taken. Please choose another.')
+        setMsg('Could not save profile.')
+        return
+      }
+
+      throw new Error(txt || `Save failed with status ${resp.status}`)
     } catch (err) {
       setStatus('error')
       const errorObj = err as { message?: string }
