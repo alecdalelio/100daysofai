@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, ensureProfile } from '../lib/supabase'
 
 type Session = Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']
 
@@ -31,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       // naive redirect once after login if no syllabus exists
       if (newSession?.user) {
+        try { await ensureProfile() } catch (_) {}
         const { data: syl } = await supabase.from('syllabi').select('id').eq('user_id', newSession.user.id).limit(1)
         if ((!syl || syl.length === 0) && window.location.pathname !== '/onboarding') {
           window.location.assign('/onboarding')

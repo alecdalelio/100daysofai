@@ -20,7 +20,7 @@ export function useProfile() {
     setIsLoading(true)
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, display_name, avatar_gradient, avatar_url')
+      .select('id, username, display_name, avatar_url')
       .eq('id', user.id)
       .single()
     const mapped: ProfileRow | null = data
@@ -28,7 +28,7 @@ export function useProfile() {
           id: (data as any).id,
           username: (data as any).username ?? null,
           display_name: (data as any).display_name ?? null,
-          avatar_gradient: (data as any).avatar_gradient ?? (data as any).avatar_url ?? null,
+          avatar_gradient: (data as any).avatar_url ?? null,
         }
       : null
     setProfile(mapped)
@@ -54,17 +54,22 @@ export function useProfile() {
 export async function updateProfile(partial: Partial<Omit<ProfileRow, 'id'>>) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
+  const payload: any = { id: user.id, username: partial.username, display_name: partial.display_name }
+  if (partial.avatar_gradient !== undefined) {
+    // Store gradient token in avatar_url for compatibility
+    payload.avatar_url = partial.avatar_gradient
+  }
   const { data, error } = await supabase
     .from('profiles')
-    .upsert({ id: user.id, ...partial })
-    .select('id, username, display_name, avatar_gradient, avatar_url')
+    .upsert(payload)
+    .select('id, username, display_name, avatar_url')
     .single()
   if (error) throw error
   const mapped: ProfileRow = {
     id: (data as any).id,
     username: (data as any).username ?? null,
     display_name: (data as any).display_name ?? null,
-    avatar_gradient: (data as any).avatar_gradient ?? (data as any).avatar_url ?? null,
+    avatar_gradient: (data as any).avatar_url ?? null,
   }
   return mapped
 }

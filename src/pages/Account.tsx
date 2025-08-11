@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
-import { supabase, queryDirectly } from '../lib/supabase'
-import { Profile } from '../lib/types'
+import { ensureProfile } from '../lib/supabase'
+import { useProfile, updateProfile } from '@/hooks/useProfile'
+import { GRADIENTS, isValidGradient } from '@/constants/gradients'
 
 export default function Account() {
   const { userId, session, loading } = useAuth()
+  const { profile, refresh } = useProfile()
   
   console.log('[Account] Component rendered. Auth state:', { userId, hasSession: !!session, loading })
   const [username, setUsername] = useState('')
@@ -15,40 +17,24 @@ export default function Account() {
   const [usernameError, setUsernameError] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
 
-  const gradients = [
-    { id: 'grad-1', className: 'bg-gradient-to-tr from-pink-500 to-yellow-500' },
-    { id: 'grad-2', className: 'bg-gradient-to-tr from-blue-500 to-green-400' },
-    { id: 'grad-3', className: 'bg-gradient-to-tr from-purple-500 to-pink-400' },
-    { id: 'grad-4', className: 'bg-gradient-to-tr from-teal-400 to-cyan-500' },
-    { id: 'grad-5', className: 'bg-gradient-to-tr from-orange-400 to-red-500' },
-    { id: 'grad-6', className: 'bg-gradient-to-tr from-indigo-500 to-sky-400' },
-  ]
+  const gradients = GRADIENTS
 
   useEffect(() => {
     let mounted = true
     async function load() {
       if (!userId) return
-      console.log('[Account] Loading profile for userId:', userId)
-      try {
-        const rows = await queryDirectly('profiles', { select: '*', eq: { column: 'id', value: userId }, limit: 1 })
-        const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null
-        console.log('[Account] Profile load result (direct):', data)
-        if (mounted && data) {
-          const profile = data as Profile
-          setUsername(profile.username ?? '')
-          setDisplayName(profile.display_name ?? '')
-          setAvatarGradient(profile.avatar_url ?? '')
-          console.log('[Account] Profile loaded:', profile)
-        } else if (mounted) {
-          console.log('[Account] No profile found - will be created on first save')
-        }
-      } catch (error) {
-        console.error('[Account] Failed to load profile:', error)
+      await ensureProfile()
+      await refresh()
+      if (!mounted) return
+      if (profile) {
+        setUsername(profile.username ?? '')
+        setDisplayName(profile.display_name ?? '')
+        setAvatarGradient(profile.avatar_gradient ?? '')
       }
     }
     load()
     return () => { mounted = false }
-  }, [userId])
+  }, [userId, profile?.id])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -76,51 +62,32 @@ export default function Account() {
         throw new Error('User ID not available - not authenticated?')
       }
 
-      // Persist using direct REST fetch to avoid potential supabase-js hangs
-      const token = session?.access_token
-      if (!token) throw new Error('Not authenticated')
+      const token = isValidGradient(avatarGradient) ? avatarGradient : null
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort('client-timeout'), 10000)
-
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?on_conflict=id&select=*`
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation,resolution=merge-duplicates',
-        },
-        body: JSON.stringify([
-          {
-            id: userId,
-            username: cleanUsername,
-            display_name: displayName || null,
-            avatar_url: avatarGradient || null,
-          },
-        ]),
-        signal: controller.signal,
-      })
-
-      clearTimeout(timeoutId)
-      const txt = await resp.text()
-
-      if (resp.ok) {
+      // Optimistic UI
+      const prev = { username, displayName, avatarGradient }
+      try {
+        const data = await updateProfile({ username: cleanUsername, display_name: displayName || null, avatar_gradient: token })
+        setUsername(data.username ?? '')
+        setDisplayName(data.display_name ?? '')
+        setAvatarGradient(data.avatar_gradient ?? '')
         setStatus('success')
         setMsg('Saved.')
         window.dispatchEvent(new Event('profile:saved'))
+        await refresh()
         return
+      } catch (error: any) {
+        if (error?.code === '23505' || /duplicate key|unique/i.test(error?.message ?? '')) {
+          setStatus('error')
+          setUsernameError('Username is taken.')
+          setMsg('Could not save profile.')
+          setUsername(prev.username)
+          setDisplayName(prev.displayName)
+          setAvatarGradient(prev.avatarGradient)
+          return
+        }
+        throw error
       }
-
-      if (resp.status === 409 || /duplicate key|unique/i.test(txt)) {
-        setStatus('error')
-        setUsernameError('That username is taken. Please choose another.')
-        setMsg('Could not save profile.')
-        return
-      }
-
-      throw new Error(txt || `Save failed with status ${resp.status}`)
     } catch (err) {
       setStatus('error')
       const errorObj = err as { message?: string }
