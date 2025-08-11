@@ -136,6 +136,7 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
         is_published: formData.is_published,
       }, { userId: userId ?? undefined });
       console.log('[Log] created', res);
+      window.dispatchEvent(new CustomEvent('log:changed', { detail: { id: res.id } }));
       setOkMsg('Entry created!');
       setFormData({
         day: 1,

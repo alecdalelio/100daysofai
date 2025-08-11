@@ -4,9 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Calendar, Code2, Sparkles, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import FloatingCounter from "@/components/ui/floating-counter";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { LogEntry } from "@/lib/types";
+import { useProgress } from "@/hooks/useProgress";
 
 type HomeLogEntry = {
   id: string
@@ -20,7 +21,7 @@ type HomeLogEntry = {
 const Home = () => {
   const [logs, setLogs] = useState<HomeLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const maxDay = useMemo(() => (logs[0]?.day ? Number(logs[0].day) : 0), [logs]);
+  const { day: maxDay } = useProgress({ countDrafts: true });
 
   useEffect(() => {
     async function fetchLogs() {

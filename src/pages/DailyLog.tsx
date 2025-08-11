@@ -4,16 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calendar, Share2, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import FloatingCounter from "@/components/ui/floating-counter";
 import { supabase } from "@/lib/supabase";
 import { LogEntry } from "@/lib/types";
+import { useProgress } from "@/hooks/useProgress";
 
 const DailyLog = () => {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const maxDay = useMemo(() => (entries.length ? Math.max(...entries.map((e) => e.day || 0)) : 0), [entries]);
+  const { day: maxDay } = useProgress({ countDrafts: true });
 
   useEffect(() => {
     async function fetchPublished() {

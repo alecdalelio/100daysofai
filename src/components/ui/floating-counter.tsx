@@ -1,38 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/auth/AuthProvider";
+import { useProgress } from "@/hooks/useProgress";
 
 const FloatingCounter = () => {
   const location = useLocation();
-  const { userId } = useAuth();
-  const [currentDay, setCurrentDay] = useState(0);
+  const { day, percent } = useProgress({ countDrafts: true });
   const totalDays = 100;
-  const progress = (currentDay / totalDays) * 100;
-
-  useEffect(() => {
-    let isMounted = true;
-    async function loadProgress() {
-      // Use owner scope if signed in; otherwise public published scope
-      let query = supabase
-        .from('logs')
-        .select('day')
-        .order('day', { ascending: false })
-        .limit(1);
-      query = userId ? query.eq('user_id', userId) : query.eq('is_published', true);
-      const { data, error } = await query;
-      if (!isMounted) return;
-      if (!error && data && data.length > 0) {
-        setCurrentDay((data[0] as any).day ?? 0);
-      } else if (!error) {
-        setCurrentDay(0);
-      }
-    }
-    loadProgress();
-    return () => { isMounted = false };
-  }, [userId]);
+  const progress = percent;
 
   // Only show on main pages
   const showCounter = ['/', '/log', '/projects', '/stack'].includes(location.pathname);
@@ -45,7 +20,7 @@ const FloatingCounter = () => {
         <CardContent className="p-0 text-center">
           <div className="text-xs text-muted-foreground mb-1">Progress</div>
           <Badge variant="secondary" className="text-sm font-mono font-bold">
-            Day {currentDay}
+            Day {day}
           </Badge>
           <div className="text-xs text-muted-foreground mt-1">of {totalDays}</div>
           
