@@ -13,7 +13,9 @@ export default function Account() {
   const [displayName, setDisplayName] = useState('')
   const [avatarGradient, setAvatarGradient] = useState('')
   const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [okMsg, setOkMsg] = useState<string | null>(null)
+  useEffect(() => { console.log('[Account] saving=', saving) }, [saving])
   const [usernameError, setUsernameError] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
 
@@ -23,7 +25,7 @@ export default function Account() {
     let mounted = true
     async function load() {
       if (!userId) return
-      await ensureProfile()
+      await ensureProfile(session?.access_token)
       await refresh()
       if (!mounted) return
       if (profile) {
@@ -36,74 +38,34 @@ export default function Account() {
     return () => { mounted = false }
   }, [userId, profile?.id])
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault()
+  async function onSave() {
     setSaving(true)
-    setMsg(null)
-    setUsernameError(null)
-    setStatus('saving')
-
-    const cleanUsername = ((username || '').trim() || null)?.toLowerCase?.() ?? null
-    const TIMEOUT_MS = 15000 // Shorter timeout
-    const safetyTimer = setTimeout(() => {
-      console.error('[Account] Safety timeout fired – clearing saving state')
-      setSaving(false)
-      setStatus('error')
-      setMsg('Save took too long. Please clear your browser data and try again.')
-    }, TIMEOUT_MS + 2000)
-
+    setErrorMsg(null)
+    setOkMsg(null)
     try {
-      console.log('[Account] entering save - username:', cleanUsername, 'displayName:', displayName)
-      console.log('[Account] userId:', userId)
-      console.log('[Account] session from auth exists:', !!session)
-      console.log('[Account] env check:', import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY ? 'anon key present' : 'anon key missing')
-      
-      if (!userId) {
-        throw new Error('User ID not available - not authenticated?')
-      }
-
-      const token = isValidGradient(avatarGradient) ? avatarGradient : null
-
-      // Optimistic UI
-      const prev = { username, displayName, avatarGradient }
-      try {
-        const data = await updateProfile({ username: cleanUsername, display_name: displayName || null, avatar_gradient: token })
-        setUsername(data.username ?? '')
-        setDisplayName(data.display_name ?? '')
-        setAvatarGradient(data.avatar_gradient ?? '')
-        setStatus('success')
-        setMsg('Saved.')
-        window.dispatchEvent(new Event('profile:saved'))
-        await refresh()
-        return
-      } catch (error: any) {
-        if (error?.code === '23505' || /duplicate key|unique/i.test(error?.message ?? '')) {
-          setStatus('error')
-          setUsernameError('Username is taken.')
-          setMsg('Could not save profile.')
-          setUsername(prev.username)
-          setDisplayName(prev.displayName)
-          setAvatarGradient(prev.avatarGradient)
-          return
-        }
-        throw error
-      }
-    } catch (err) {
-      setStatus('error')
-      const errorObj = err as { message?: string }
-      console.error('[Account] Save failed', err)
-      
-      // If it's an authentication error, suggest login
-      if (errorObj?.message?.includes('Authentication') || errorObj?.message?.includes('JWT')) {
-        setMsg('Session expired. Please log out and log back in.')
-      } else {
-        setMsg(errorObj?.message || 'Failed to save')
-      }
+      console.log('[Account] save ->', { username, displayName, avatarGradient })
+      const row = await updateProfile({
+        username: username?.trim() || undefined,
+        display_name: displayName?.trim() || undefined,
+        avatar_gradient: avatarGradient || undefined,
+      }, { token: session?.access_token, userId: userId ?? undefined })
+      console.log('[Account] saved row', row)
+      setUsername(row.username ?? '')
+      setDisplayName(row.display_name ?? '')
+      setAvatarGradient(row.avatar_gradient ?? 'grad-1')
+      try { localStorage.setItem('profile:last', JSON.stringify(row)) } catch {}
+      window.dispatchEvent(new CustomEvent('profile:saved', { detail: row }))
+      setOkMsg('Saved')
+      await refresh()
+    } catch (err: any) {
+      console.error('[Account] save error', err)
+      setErrorMsg(err?.message || 'Save failed')
     } finally {
-      clearTimeout(safetyTimer)
       setSaving(false)
     }
   }
+
+  async function onSubmit(e: FormEvent) { e.preventDefault(); await onSave(); }
 
   return (
     <div className="mx-auto max-w-xl p-6 space-y-4">
@@ -142,10 +104,17 @@ export default function Account() {
             ))}
           </div>
         </div>
-        <button className="border rounded px-4 py-2" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
-        {msg && (
-          <p className={`text-sm mt-2 ${status === 'error' ? 'text-red-600' : 'text-green-600'}`}>{msg}</p>
-        )}
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="px-4 py-2 rounded border"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+
+        {errorMsg && <p className="text-red-500 mt-2">{errorMsg}</p>}
+        {okMsg && <p className="text-green-500 mt-2">{okMsg}</p>}
       </form>
     </div>
   )

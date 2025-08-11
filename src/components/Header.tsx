@@ -2,64 +2,44 @@ import { Link, useNavigate } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../auth/AuthProvider'
 import { useEffect, useRef, useState } from 'react'
-import { supabase, signOut, queryDirectly } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import { gradientClass } from '@/constants/gradients'
+import { useProfile } from '@/hooks/useProfile'
 
 export default function Header() {
   const { userId } = useAuth()
-  const [profile, setProfile] = useState<any | null>(null)
+  const { profile, refresh } = useProfile()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [hasSyllabus, setHasSyllabus] = useState<boolean>(true)
 
   useEffect(() => {
-    let mounted = true
-    if (!userId) { /* keep last-known profile during transient auth gaps */ return }
-    
-    const loadProfile = async () => {
-      if (!userId) { return }
+    console.log('[Header] profile', profile)
+  }, [profile])
+
+  // Refresh header profile when Account reports a save
+  useEffect(() => {
+    const onSaved = (ev: Event) => {
+      console.log('[Header] received profile:saved', (ev as CustomEvent).detail)
+      refresh()
+    }
+    window.addEventListener('profile:saved', onSaved)
+    return () => window.removeEventListener('profile:saved', onSaved)
+  }, [refresh])
+
+  // Fallback: boot-time hydrate from last saved local cache
+  useEffect(() => {
+    if (!profile) {
       try {
-        const rows = await queryDirectly('profiles', { select: '*', eq: { column: 'id', value: userId }, limit: 1 })
-        const data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null
-        if (mounted) setProfile(data as Profile | null)
-      } catch (e) {
-        console.error('[Header] Failed to load profile via direct fetch:', e)
-      }
+        const raw = localStorage.getItem('profile:last')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          console.log('[Header] hydrate from cache', parsed)
+        }
+      } catch {}
     }
-    
-    const loadData = async () => {
-      await loadProfile()
-      // check syllabus once
-      const { data: syl } = await supabase.from('syllabi').select('id').eq('user_id', userId).limit(1)
-      if (mounted) setHasSyllabus(!!(syl && syl.length))
-    }
-    
-    loadData()
-
-    // realtime updates for this user's profile (best-effort; ignore failures)
-    let channel: ReturnType<typeof supabase.channel> | null = null
-    try {
-      channel = supabase
-        .channel('profile-updates')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, () => {
-          if (mounted) loadProfile()
-        })
-        .subscribe()
-    } catch (e) {
-      console.warn('[Header] Realtime subscription failed, falling back to event-based refresh only', e)
-    }
-
-    // listen for explicit save event from Account page
-    const onProfileSaved = () => { if (mounted) loadProfile() }
-    window.addEventListener('profile:saved', onProfileSaved)
-
-    return () => {
-      mounted = false
-      window.removeEventListener('profile:saved', onProfileSaved)
-      if (channel) supabase.removeChannel(channel)
-    }
-  }, [userId])
+  }, [profile])
 
   // close on outside click / Esc
   useEffect(() => {
@@ -78,6 +58,7 @@ export default function Header() {
     }
   }, [menuOpen])
 
+  const display = profile?.username || profile?.display_name || 'Account'
   return (
     <header className="w-full sticky top-0 z-40 bg-white/80 dark:bg-black/70 backdrop-blur border-b border-gray-200 dark:border-white/10">
       <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
@@ -92,16 +73,16 @@ export default function Header() {
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
               >
-                {profile?.avatar_gradient || profile?.avatar_url ? (
-                  (profile.avatar_gradient ?? profile.avatar_url)?.startsWith('grad-') ? (
-                    <div className={`h-7 w-7 rounded-full ${gradientClass(profile.avatar_gradient ?? profile.avatar_url)}`} />
+                {profile?.avatar_gradient ? (
+                  profile.avatar_gradient.startsWith('grad-') ? (
+                    <div className={`h-7 w-7 rounded-full ${gradientClass(profile.avatar_gradient)}`} />
                   ) : (
-                    <img src={profile.avatar_url} alt="avatar" className="h-7 w-7 rounded-full object-cover" />
+                    <img src={profile.avatar_gradient} alt="avatar" className="h-7 w-7 rounded-full object-cover" />
                   )
                 ) : (
                   <div className="h-7 w-7 rounded-full border border-gray-300 dark:border-white/20 bg-white/60 dark:bg-white/10" />
                 )}
-                <span className="text-gray-900 dark:text-gray-100">{profile?.username || profile?.display_name || 'Account'}</span>
+                <span className="text-gray-900 dark:text-gray-100">{display}</span>
               </button>
               <div
                 role="menu"

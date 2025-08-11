@@ -259,9 +259,18 @@ export async function callEdgeFunction<T = unknown>(
 }
 
 // Ensures a profile row exists for the authenticated user
-export async function ensureProfile(): Promise<void> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.access_token) return
+export async function ensureProfile(tokenOverride?: string): Promise<void> {
+  let token = tokenOverride
+  if (!token) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      token = session?.access_token ?? undefined
+    } catch (e) {
+      console.warn('[ensureProfile] getSession failed; continuing without ensure', e)
+      return
+    }
+  }
+  if (!token) return
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort('client-timeout'), 10000)
@@ -271,7 +280,7 @@ export async function ensureProfile(): Promise<void> {
       method: 'POST',
       headers: {
         'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${session.access_token}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       signal: controller.signal,
