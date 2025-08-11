@@ -157,7 +157,7 @@ export default function Header() {
                     window.location.href = '/';
                   }}
                 >
-                  Sign out (Force)
+                  Sign out
                 </button>
               </div>
             </div>
