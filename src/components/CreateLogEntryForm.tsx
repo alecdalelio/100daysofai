@@ -60,11 +60,11 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
     };
 
     // Use direct REST to avoid any supabase-js client stalls
-    const resp = await restFetch(`/logs?select=id,day,is_published,day_key`, {
+    const resp = await restFetch(`/logs?select=id,day,is_published,created_at`, {
       method: 'POST',
       headers: { 'Prefer': 'return=representation' },
       body: JSON.stringify(payload),
-      timeoutMs: 7000,
+      timeoutMs: 20000,
     });
     const text = await resp.text();
     console.log('[logs.insert][REST] status', resp.status, text);
@@ -76,14 +76,15 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
     }
     const rows = text ? JSON.parse(text) : [];
     const row = Array.isArray(rows) ? rows[0] : rows;
-    return row as { id: string; day: number; is_published: boolean; day_key?: string };
+    return row as { id: string; day: number; is_published: boolean; created_at?: string };
   };
 
   try {
-    return await Promise.race([write(), timeout(7000)]);
+    // Rely on restFetch's own timeout (20s) to avoid double-timeout races
+    return await write();
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string } | undefined;
-    if (err?.code === '23505') {
+    if (err?.code === '23505' || /published.*per.*day/i.test(err?.message ?? '')) {
       throw new Error('You already have a log for that day.');
     }
     throw new Error(err?.message || 'Create failed');
@@ -126,22 +127,20 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
       try {
         if (!userId) return;
         const tz = profile?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-        // effective day is (now in tz - 3h).toISODate()
-        const now = new Date();
-        // Do a simple client calc without luxon to avoid heavy deps here
-        // We'll reuse nextEligiblePublish for pretty message
-        const offsetNow = new Date(now.getTime() - 3 * 60 * 60 * 1000);
-        const y = offsetNow.getUTCFullYear();
-        const m = String(offsetNow.getUTCMonth() + 1).padStart(2, '0');
-        const d = String(offsetNow.getUTCDate()).padStart(2, '0');
-        const effective = `${y}-${m}-${d}`;
+        // Check if user has any published entry today by date(created_at at tz)
+        const today = new Date();
+        const y = today.getUTCFullYear();
+        const m = String(today.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(today.getUTCDate()).padStart(2, '0');
+        const isoDay = `${y}-${m}-${d}`;
 
         const { data: rows, error } = await supabase
           .from('logs')
           .select('id')
           .eq('user_id', userId)
           .eq('is_published', true)
-          .eq('day_key', effective)
+          .gte('created_at', `${isoDay}T00:00:00Z`)
+          .lte('created_at', `${isoDay}T23:59:59Z`)
           .limit(1);
         if (!error && rows && rows.length > 0) {
           setPublishDisabled(true);
