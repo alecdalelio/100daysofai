@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer, .animate-indeterminate, .animate-ping, .animate-pulse, .animate-float, .animate-glow-pulse, .animate-fade-in-up, .fade-in-up, .hover-lift { 
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
 /* High-contrast AI-native design system inspired by Linear, Vercel, Reka */
 
 @layer base {

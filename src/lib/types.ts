@@ -18,6 +18,10 @@ export interface LogEntry {
   is_published: boolean
   created_at: string
   updated_at?: string
+  profiles?: {
+    username: string | null
+    display_name: string | null
+  }
 }
 
 export interface Syllabus {

@@ -2,54 +2,58 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, Share2, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import FloatingCounter from "@/components/ui/floating-counter";
-import { supabase } from "@/lib/supabase";
+import { AuthorDisplay } from "@/components/AuthorDisplay";
 import { LogEntry } from "@/lib/types";
 import { useProgress } from "@/hooks/useProgress";
+import { fetchLogsWithProfiles } from "@/lib/fetchLogsWithProfiles";
 
 const DailyLog = () => {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const { day: maxDay } = useProgress({ countDrafts: true });
 
-  useEffect(() => {
-    async function fetchPublished() {
-      setLoading(true);
-      setErrorMsg(null);
+  const fetchPublished = async () => {
+    setLoading(true);
+    setErrorMsg(null);
 
-      const TIMEOUT_MS = 15000;
-      const withTimeout = <T,>(p: Promise<T>) =>
-        Promise.race([
-          p,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Request timed out. Please try again.")), TIMEOUT_MS)
-          ),
-        ]);
+    try {
+      console.log('[DailyLog] Starting to fetch published logs...');
+      
+      const entries = await fetchLogsWithProfiles({
+        isPublished: true
+      });
 
-      try {
-        const query = supabase
-          .from('logs')
-          .select('id, day, title, content, created_at, is_published')
-          .eq('is_published', true)
-          .order('created_at', { ascending: false });
-
-        const { data, error } = await withTimeout(query);
-
-        if (error) throw error;
-        setEntries((data as LogEntry[]) ?? []);
-      } catch (err) {
-        const errorObj = err as { message?: string }
-        const message = errorObj?.message || 'Failed to load logs';
-        setErrorMsg(message);
-        setEntries([]);
-      } finally {
-        setLoading(false);
+      console.log(`[DailyLog] Successfully loaded ${entries.length} entries`);
+      setEntries(entries);
+      setRetryCount(0); // Reset retry count on success
+    } catch (err) {
+      console.error('[DailyLog] Failed to fetch logs:', err);
+      const errorObj = err as { message?: string; code?: string };
+      let message = 'Failed to load logs';
+      
+      if (errorObj?.code === 'PGRST301') {
+        message = 'No published entries found. Check back later!';
+      } else if (errorObj?.message) {
+        message = errorObj.message.includes('timeout') 
+          ? 'Connection is slow. Please check your internet and try again.'
+          : errorObj.message;
       }
+      
+      setErrorMsg(message);
+      setEntries([]);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     fetchPublished();
   }, []);
 
@@ -84,7 +88,21 @@ const DailyLog = () => {
               <div className="mb-6">
                 <Alert variant="destructive">
                   <AlertTitle>Could not load logs</AlertTitle>
-                  <AlertDescription>{errorMsg}</AlertDescription>
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>{errorMsg}</span>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => {
+                        setRetryCount(prev => prev + 1);
+                        fetchPublished();
+                      }}
+                      className="ml-4"
+                      disabled={loading}
+                    >
+                      {loading ? 'Retrying...' : 'Try Again'}
+                    </Button>
+                  </AlertDescription>
                 </Alert>
               </div>
             )}
@@ -92,9 +110,27 @@ const DailyLog = () => {
             {/* Entries */}
             <div className="space-y-12">
               {loading ? (
-                <Card className="glow-primary hover:glow-electric transition-all duration-500 hover-lift">
-                  <CardContent className="py-16 text-center">Loading…</CardContent>
-                </Card>
+                <>
+                  {[...Array(5)].map((_, index) => (
+                    <Card key={index} className="glow-primary hover:glow-electric transition-all duration-500 hover-lift">
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-4">
+                            <Skeleton className="h-8 w-16" />
+                            <Skeleton className="h-4 w-24" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-8 w-3/4 mb-2" />
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-11/12" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
               ) : entries.length > 0 ? (
                 entries.map((entry, index) => (
                   <Link key={entry.id ?? index} to={`/log/${entry.id}`} className="block">
@@ -129,6 +165,7 @@ const DailyLog = () => {
                       <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-cyber transition-all duration-500 leading-tight">
                         {entry.title}
                       </CardTitle>
+                      <AuthorDisplay profile={entry.profiles} />
                     </CardHeader>
                   
                     <CardContent className="space-y-6">

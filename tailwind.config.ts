@@ -112,12 +112,13 @@ export default {
 					}
 				},
 				'shimmer': {
-					'0%': {
-						backgroundPosition: '-200% 0'
-					},
-					'100%': {
-						backgroundPosition: '200% 0'
-					}
+					'0%': { transform: 'translateX(-100%)' },
+					'100%': { transform: 'translateX(100%)' }
+				},
+				'indeterminate': {
+					'0%':   { left: '-40%', width: '40%' },
+					'50%':  { left: '20%',  width: '60%' },
+					'100%': { left: '100%', width: '40%' },
 				},
 				'float': {
 					'0%, 100%': {
@@ -133,7 +134,8 @@ export default {
 				'accordion-up': 'accordion-up 0.2s ease-out',
 				'fade-in-up': 'fade-in-up 0.8s ease-out',
 				'glow-pulse': 'glow-pulse 2s ease-in-out infinite',
-				'shimmer': 'shimmer 2s infinite',
+				'shimmer': 'shimmer 1.25s ease-in-out infinite',
+				'indeterminate': 'indeterminate 1s ease-out infinite',
 				'float': 'float 3s ease-in-out infinite'
 			},
 			backgroundImage: {

@@ -20,6 +20,17 @@ import Stack from "./pages/Stack";
 import About from "./pages/About";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import { RouteProgressBar } from "./components/ui/RouteLoader";
+import { useRouteLoading } from "./hooks/useRouteLoading";
+
+function RouteLoadersMount() {
+  const busy = useRouteLoading(500, 200)
+  return (
+    <>
+      {busy && <RouteProgressBar />}
+    </>
+  )
+}
 
 const queryClient = new QueryClient();
 
@@ -31,6 +42,8 @@ const App = () => (
       <BrowserRouter>
         <ThemeProvider>
           <AuthProvider>
+            {/* Route-level loader inside Router context */}
+            <RouteLoadersMount />
             <Header />
             <Routes>
             {/* Public routes */}
@@ -87,6 +100,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          {/* overlay handled by RouteLoadersMount */}
         </AuthProvider>
         </ThemeProvider>
       </BrowserRouter>

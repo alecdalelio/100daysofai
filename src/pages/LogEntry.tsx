@@ -1,13 +1,16 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, ArrowLeft, Share2, ExternalLink, Trash2 } from "lucide-react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import FloatingCounter from "@/components/ui/floating-counter";
+import { AuthorDisplay } from "@/components/AuthorDisplay";
 import { useAuth } from "@/auth/AuthProvider";
 import { LogEntry as LogEntryType } from "@/lib/types";
+import { fetchSingleLogWithProfile } from "@/lib/fetchLogsWithProfiles";
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -35,40 +38,31 @@ const LogEntry = () => {
         // Treat id as string (supports UUIDs)
         const logId = (id ?? '').toString();
         if (!logId) {
-          console.error('Missing logId from route param:', id);
+          console.error('[LogEntry] Missing logId from route param:', id);
           setError('Invalid log identifier');
           setLoading(false);
           return;
         }
 
-        // Instrumented Supabase query per requested format
-        console.log("Fetching log for ID:", logId);
-        const { data, error } = await supabase
-          .from('logs')
-          .select('*')
-          .eq('id', logId)
-          .single();
+        console.log(`[LogEntry] Starting to fetch entry for ID: ${logId}`);
+        
+        const entry = await fetchSingleLogWithProfile(logId);
 
-        console.log("Supabase data:", data);
-        console.log("Supabase error:", error);
-
-        if (!data && !error) {
-          console.warn("No data returned, no error — possibly row does not exist or fails RLS policy.");
-        }
-
-        if (error) {
-          const errorObj = error as { code?: string }
-          if (errorObj.code === 'PGRST116') {
-            setError('Entry not found');
-          } else {
-            setError('Failed to fetch entry');
-          }
+        if (!entry) {
+          console.warn("[LogEntry] No entry found for ID:", logId);
+          setError('Entry not found');
         } else {
-          setEntry(data as LogEntryType);
+          console.log('[LogEntry] Successfully loaded entry:', entry.title);
+          setEntry(entry);
         }
       } catch (err) {
-        console.error('Unexpected error while fetching entry by id:', err);
-        setError('Failed to fetch entry');
+        console.error('[LogEntry] Unexpected error while fetching entry:', err);
+        const errorObj = err as { code?: string };
+        if (errorObj.code === 'PGRST116') {
+          setError('Entry not found');
+        } else {
+          setError('Failed to fetch entry');
+        }
       } finally {
         setLoading(false);
       }
@@ -107,11 +101,38 @@ const LogEntry = () => {
         <div className="min-h-screen pt-20 relative overflow-hidden">
           <div className="absolute inset-0 grid-bg opacity-20" />
           <div className="px-6 py-16 relative">
-            <div className="max-w-4xl mx-auto text-center">
-              <div className="animate-pulse">
-                <div className="h-8 bg-gray-200 rounded mb-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto"></div>
+            <div className="max-w-4xl mx-auto">
+              {/* Navigation skeleton */}
+              <div className="mb-8">
+                <Skeleton className="h-8 w-32" />
               </div>
+
+              {/* Entry skeleton */}
+              <Card className="glow-primary hover:glow-electric transition-all duration-500">
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <Skeleton className="h-8 w-16" />
+                      <Skeleton className="h-4 w-32" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-8 w-8 rounded-md" />
+                      <Skeleton className="h-8 w-8 rounded-md" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-10 w-64 rounded-xl mt-4" />
+                  <Skeleton className="h-4 w-40 mt-2" />
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
@@ -233,6 +254,8 @@ const LogEntry = () => {
                 <CardTitle className="text-3xl md:text-4xl gradient-text-electric leading-tight">
                   {entry.title}
                 </CardTitle>
+                
+                <AuthorDisplay profile={entry.profiles} />
                 
                 {entry.summary && (
                   <CardDescription className="text-lg leading-relaxed">
