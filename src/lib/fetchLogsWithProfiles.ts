@@ -1,6 +1,13 @@
 import { supabase } from './supabase'
 import { LogEntry } from './types'
 
+type FetchedProfile = {
+  id: string
+  username: string | null
+  display_name: string | null
+  avatar_url: string | null
+}
+
 export interface LogsQuery {
   isPublished?: boolean
   userId?: string
@@ -55,11 +62,11 @@ export async function fetchLogsWithProfiles(options: LogsQuery = {}): Promise<Lo
     console.log(`[fetchLogsWithProfiles] Found ${userIds.length} unique user IDs`)
     
     // 3. Fetch profiles for those users
-    let profiles: any[] = []
+    let profiles: FetchedProfile[] = []
     if (userIds.length > 0) {
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, username, display_name')
+        .select('id, username, display_name, avatar_url')
         .in('id', userIds)
       
       if (profilesError) {
@@ -67,7 +74,7 @@ export async function fetchLogsWithProfiles(options: LogsQuery = {}): Promise<Lo
         // Don't throw - continue without profiles
         profiles = []
       } else {
-        profiles = profilesData || []
+        profiles = (profilesData as FetchedProfile[]) || []
       }
     }
     
@@ -75,10 +82,20 @@ export async function fetchLogsWithProfiles(options: LogsQuery = {}): Promise<Lo
     console.log(`[fetchLogsWithProfiles] Completed in ${duration}ms - ${logs.length} logs, ${profiles.length} profiles`)
     
     // 4. Join logs with profiles
-    const logsWithProfiles: LogEntry[] = logs.map(log => ({
-      ...log,
-      profiles: profiles.find(profile => profile.id === log.user_id) || null
-    }))
+    const logsWithProfiles: LogEntry[] = logs.map(log => {
+      const p = profiles.find(profile => profile.id === log.user_id) || null
+      return {
+        ...log,
+        profiles: p
+          ? {
+              username: p.username ?? null,
+              display_name: p.display_name ?? null,
+              // App treats avatar_url as avatar_gradient (could be gradient key or URL)
+              avatar_gradient: p.avatar_url ?? null,
+            }
+          : null,
+      }
+    })
     
     return logsWithProfiles
     

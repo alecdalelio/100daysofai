@@ -21,6 +21,7 @@ export interface LogEntry {
   profiles?: {
     username: string | null
     display_name: string | null
+    avatar_gradient?: string | null
   }
 }
 
