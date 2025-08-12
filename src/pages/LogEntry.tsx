@@ -255,7 +255,7 @@ const LogEntry = () => {
                   {entry.title}
                 </CardTitle>
                 
-                <AuthorDisplay profile={entry.profiles} />
+                <AuthorDisplay profile={entry.profiles} showAvatar={true} avatarSize="md" />
                 
                 {entry.summary && (
                   <CardDescription className="text-lg leading-relaxed">

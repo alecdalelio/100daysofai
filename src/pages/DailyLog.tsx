@@ -165,7 +165,7 @@ const DailyLog = () => {
                       <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-cyber transition-all duration-500 leading-tight">
                         {entry.title}
                       </CardTitle>
-                      <AuthorDisplay profile={entry.profiles} />
+                      <AuthorDisplay profile={entry.profiles} showAvatar={true} />
                     </CardHeader>
                   
                     <CardContent className="space-y-6">

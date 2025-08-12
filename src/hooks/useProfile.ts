@@ -49,8 +49,16 @@ export function useProfile() {
   useEffect(() => {
     try {
       const cached = localStorage.getItem(lastKey)
-      if (cached) setProvisional(normalize(JSON.parse(cached)))
-    } catch {}
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        console.log('[useProfile] Loading provisional from lastKey cache:', parsed)
+        setProvisional(normalize(parsed))
+      } else {
+        console.log('[useProfile] No lastKey cache found')
+      }
+    } catch {
+      console.log('[useProfile] Failed to load lastKey cache')
+    }
   }, [setProvisional])
 
   const fetchProfile = useCallback(async () => {
@@ -69,35 +77,46 @@ export function useProfile() {
       setIsLoading(true)
       setError(null)
 
-      // Fast paint from per-user cache and normalize immediately
-      try {
-        const ck = localStorage.getItem(userKey(uid))
-        if (ck) {
-          const norm = normalize(JSON.parse(ck), sess?.session)
-          setStoreProfile(norm)
-          try {
-            localStorage.setItem(userKey(uid), JSON.stringify(norm))
-            localStorage.setItem(lastKey, JSON.stringify(norm))
-          } catch {}
-        }
-      } catch {}
-
+      // Fetch fresh data from database first
       const { data: row, error: err } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_gradient, avatar_url, time_zone')
+        .select('id, username, display_name, avatar_url, time_zone')
         .eq('id', uid)
         .maybeSingle()
 
       if (err) throw err
 
-      const norm = normalize(row, sess?.session)
-      setStoreProfile(norm)
+      console.log('[useProfile] Fresh database fetch result:', row)
+      const freshNorm = normalize(row, sess?.session)
+      console.log('[useProfile] Setting store profile from database (fresh):', freshNorm)
+      setStoreProfile(freshNorm)
+
+      // Update cache with fresh data
       try {
-        localStorage.setItem(userKey(uid), JSON.stringify(norm))
-        localStorage.setItem(lastKey, JSON.stringify(norm))
-      } catch {}
+        localStorage.setItem(userKey(uid), JSON.stringify(freshNorm))
+        localStorage.setItem(lastKey, JSON.stringify(freshNorm))
+        console.log('[useProfile] Updated cache with fresh database data')
+      } catch {
+        console.log('[useProfile] Failed to update cache with fresh data')
+      }
+
+      // Cache data is only used if fresh fetch failed (handled in catch block)
     } catch (e: any) {
-      setError(e?.message || 'Failed to load profile')
+      console.error('[useProfile] Fresh fetch failed, trying cached data:', e)
+      // Fallback to cached data if fresh fetch fails
+      try {
+        const ck = localStorage.getItem(userKey(uid))
+        if (ck) {
+          const parsed = JSON.parse(ck)
+          console.log('[useProfile] Using cached data as fallback after fetch error:', parsed)
+          const norm = normalize(parsed, sess?.session)
+          setStoreProfile(norm)
+        } else {
+          setError(e?.message || 'Failed to load profile')
+        }
+      } catch {
+        setError(e?.message || 'Failed to load profile')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -139,10 +158,14 @@ export function useProfile() {
     }
     const onProfileSaved = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as Partial<ProfileRow> | undefined
+      console.log('[useProfile] Received profile:saved event with detail:', detail)
       if (detail) {
-        const merged = { ...(useProfileStore.getState().profile ?? useProfileStore.getState().lastNonNull ?? {} as any), ...detail } as ProfileRow
+        const currentProfile = useProfileStore.getState().profile ?? useProfileStore.getState().lastNonNull ?? {} as any
+        const merged = { ...currentProfile, ...detail } as ProfileRow
+        console.log('[useProfile] Merging profile:saved detail with current profile:', { currentProfile, detail, merged })
         setStoreProfile(merged)
       }
+      console.log('[useProfile] Calling fetchProfile() after profile:saved event')
       fetchProfile()
     }
     window.addEventListener('profile:saved', onProfileSaved)
@@ -193,6 +216,8 @@ export async function updateProfile(partial: PartialProfile, opts: UpdateOpts = 
     delete (payload as any)['avatar_gradient']
   }
 
+  console.log('[profiles.update] payload being sent:', JSON.stringify(payload, null, 2))
+
   // Use direct REST PATCH to guarantee a visible network request and avoid client stalls
   const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`
   const controller = new AbortController()
@@ -210,7 +235,8 @@ export async function updateProfile(partial: PartialProfile, opts: UpdateOpts = 
       signal: controller.signal,
     })
     const text = await resp.text()
-    console.log('[profiles.update] REST response', resp.status, text)
+    console.log('[profiles.update] REST response', resp.status, resp.statusText, text)
+    console.log('[profiles.update] response headers:', Object.fromEntries([...resp.headers.entries()]))
     if (!resp.ok) {
       // Surface PostgREST errors clearly
       const err: any = new Error(text || `Update failed (${resp.status})`)

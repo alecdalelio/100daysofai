@@ -3,13 +3,14 @@ import { useProfile } from '@/hooks/useProfile'
 import { gradientClass } from '@/constants/gradients'
 import { supabase } from '@/lib/supabase'
 import { readLastProfile } from '@/lib/profileCache'
+import { isStorageAvatarUrl } from '@/lib/avatarUpload'
 
 export default function UserBadge() {
   const { profile } = useProfile()
   const cached = readLastProfile()
   const initialName = cached?.username || cached?.display_name || null
   const [name, setName] = useState<string | null>(initialName)
-  const [grad, setGrad] = useState<string>(profile?.avatar_gradient ?? cached?.avatar_gradient ?? 'grad-1')
+  const [avatarValue, setAvatarValue] = useState<string>(profile?.avatar_gradient ?? cached?.avatar_gradient ?? 'grad-1')
   const [showSkeleton, setShowSkeleton] = useState<boolean>(false)
   const [sessName, setSessName] = useState<string | null>(null)
 
@@ -17,7 +18,7 @@ export default function UserBadge() {
   useEffect(() => {
     const live = profile?.username || profile?.display_name || null
     if (live && live !== name) setName(live)
-    if (profile?.avatar_gradient) setGrad(profile.avatar_gradient)
+    if (profile?.avatar_gradient) setAvatarValue(profile.avatar_gradient)
     if (live) setShowSkeleton(false)
   }, [profile])
 
@@ -49,7 +50,21 @@ export default function UserBadge() {
         </>
       ) : (
         <>
-          <i data-testid="user-badge-dot" className={`h-5 w-5 rounded-full ${gradientClass(grad)}`} />
+          {isStorageAvatarUrl(avatarValue) ? (
+            <img 
+              data-testid="user-badge-image"
+              src={avatarValue} 
+              alt="User avatar"
+              className="h-5 w-5 rounded-full object-cover border border-white/20"
+              onError={(e) => {
+                // Fallback to gradient on error
+                console.warn('[UserBadge] Failed to load avatar image, falling back to gradient')
+                setAvatarValue('grad-1')
+              }}
+            />
+          ) : (
+            <i data-testid="user-badge-dot" className={`h-5 w-5 rounded-full ${gradientClass(avatarValue)}`} />
+          )}
           <span data-testid="user-badge-name" className="text-sm">{name || sessName || 'Account'}</span>
         </>
       )}
