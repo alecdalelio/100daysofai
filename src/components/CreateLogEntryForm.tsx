@@ -21,30 +21,53 @@ type NewLog = {
 };
 
 async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
+  console.log('[DEBUG] createLogEntry called with:', { input, opts });
+  
   // Resolve user id using provided value first, then fall back to session/user with timeouts
   let resolvedUserId: string | null = opts?.userId ?? null;
   const resolveUserId = async (): Promise<string> => {
-    if (resolvedUserId) return resolvedUserId;
+    console.log('[DEBUG] Resolving user ID...');
+    if (resolvedUserId) {
+      console.log('[DEBUG] Using provided user ID:', resolvedUserId);
+      return resolvedUserId;
+    }
     const timeout = (ms: number) => new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Auth timed out')), ms));
     // Try getSession quickly
     try {
+      console.log('[DEBUG] Attempting getSession...');
       const sessionResult = (await Promise.race([
         supabase.auth.getSession(),
         timeout(2500),
       ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>;
+      console.log('[DEBUG] getSession result:', { 
+        hasSession: !!sessionResult?.data?.session,
+        hasUser: !!sessionResult?.data?.session?.user,
+        userId: sessionResult?.data?.session?.user?.id,
+        sessionExpiry: sessionResult?.data?.session?.expires_at
+      });
       const sid = sessionResult?.data?.session?.user?.id;
       if (sid) return sid;
-    } catch {}
+    } catch (err) {
+      console.log('[DEBUG] getSession failed:', err);
+    }
     // Fallback to getUser
+    console.log('[DEBUG] Falling back to getUser...');
     const userResult = (await Promise.race([
       supabase.auth.getUser(),
       timeout(2500),
     ])) as Awaited<ReturnType<typeof supabase.auth.getUser>>;
+    console.log('[DEBUG] getUser result:', { 
+      hasError: !!userResult.error, 
+      hasUser: !!userResult.data?.user,
+      userId: userResult.data?.user?.id,
+      error: userResult.error?.message
+    });
     if (userResult.error || !userResult.data?.user) throw new Error('Not signed in');
     return userResult.data.user.id;
   };
 
   const userId = await resolveUserId();
+  console.log('[DEBUG] Resolved userId:', userId);
 
   const timeout = (ms: number) =>
     new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Request timed out')), ms));
@@ -59,6 +82,9 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
       is_published: !!input.is_published,
     };
 
+    console.log('[DEBUG] Payload to be sent:', payload);
+    console.log('[DEBUG] Making REST call to /logs...');
+
     // Use direct REST to avoid any supabase-js client stalls
     const resp = await restFetch(`/logs?select=id,day,is_published,created_at`, {
       method: 'POST',
@@ -66,9 +92,17 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
       body: JSON.stringify(payload),
       timeoutMs: 20000,
     });
+    
+    console.log('[DEBUG] REST response status:', resp.status);
+    console.log('[DEBUG] REST response headers:', Object.fromEntries(resp.headers.entries()));
+    
     const text = await resp.text();
     console.log('[logs.insert][REST] status', resp.status, text);
+    console.log('[DEBUG] Full response body:', text);
+    
     if (!resp.ok) {
+      console.error('[DEBUG] Request failed with status', resp.status);
+      console.error('[DEBUG] Response body:', text);
       const err = new Error(text || `Insert failed (${resp.status})`);
       // attach crude code for duplication if present
       if (/23505/.test(text)) (err as any).code = '23505';
@@ -76,6 +110,7 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
     }
     const rows = text ? JSON.parse(text) : [];
     const row = Array.isArray(rows) ? rows[0] : rows;
+    console.log('[DEBUG] Parsed response:', row);
     return row as { id: string; day: number; is_published: boolean; created_at?: string };
   };
 
@@ -83,11 +118,32 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
     // Rely on restFetch's own timeout (20s) to avoid double-timeout races
     return await write();
   } catch (e: unknown) {
-    const err = e as { code?: string; message?: string } | undefined;
-    if (err?.code === '23505' || /published.*per.*day/i.test(err?.message ?? '')) {
-      throw new Error('You already have a log for that day.');
+    console.error('[DEBUG] createLogEntry catch block:', e);
+    const err = e as { code?: string; message?: string; status?: number } | undefined;
+    
+    // Handle specific database constraint violations
+    if (err?.code === '23505' || /unique constraint|duplicate key|published.*per.*day/i.test(err?.message ?? '')) {
+      throw new Error('You already have a published log for that day.');
     }
-    throw new Error(err?.message || 'Create failed');
+    
+    // Handle column not found errors (summary field issue)
+    if (/column.*does not exist|unknown field/i.test(err?.message ?? '')) {
+      throw new Error('Database schema mismatch. Please contact support.');
+    }
+    
+    // Handle auth errors
+    if (err?.message?.includes('401') || err?.message?.includes('Unauthorized')) {
+      throw new Error('Authentication failed. Please sign in again.');
+    }
+    
+    // Handle RLS errors  
+    if (err?.message?.includes('403') || err?.message?.includes('insufficient_privilege') || err?.message?.includes('row-level security')) {
+      throw new Error('Permission denied. You may not be signed in properly.');
+    }
+    
+    // Generic error with more context
+    const message = err?.message || 'Create failed';
+    throw new Error(`Failed to create log entry: ${message}`);
   }
 }
 
@@ -156,6 +212,9 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
 
   async function onSubmit(e?: React.FormEvent) {
     e?.preventDefault?.();
+    console.log('[DEBUG] onSubmit called, formData:', formData);
+    console.log('[DEBUG] Current userId from auth:', userId);
+    
     setSubmitting(true);
     setErrorMsg(null);
     setOkMsg(null);
@@ -167,13 +226,23 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
         throw new Error('Title is required.');
       }
 
-      const res = await createLogEntry({
+      console.log('[DEBUG] Validation passed, calling createLogEntry...');
+      
+      // Add master timeout to prevent indefinite hanging
+      const masterTimeout = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Operation timed out after 10 seconds')), 10000)
+      );
+      
+      const createLogPromise = createLogEntry({
         day: formData.day,
         title: formData.title,
         summary: formData.summary,
         content: formData.content,
         is_published: formData.is_published,
       }, { userId: userId ?? undefined });
+      
+      const res = await Promise.race([createLogPromise, masterTimeout]);
+      console.log('[DEBUG] createLogEntry succeeded:', res);
       console.log('[Log] created', res);
       window.dispatchEvent(new CustomEvent('log:changed', { detail: { id: res.id } }));
       setOkMsg('Entry created!');
@@ -188,21 +257,26 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
       // Navigate to the newly created log page
       navigate(`/log/${res.id}`);
     } catch (err: unknown) {
+      console.error('[DEBUG] onSubmit error caught:', err);
+      console.error('[DEBUG] Error type:', typeof err);
+      console.error('[DEBUG] Error properties:', Object.getOwnPropertyNames(err));
       console.error('[Log] create error', err);
       const code = (err as any)?.code as string | undefined;
       if (code === '23505') {
         const tz = profile?.time_zone || 'UTC';
         const { pretty } = nextEligiblePublish(tz);
-        const message = `You’ve already published for today. Next eligible: ${pretty}.`;
+        const message = `You've already published for today. Next eligible: ${pretty}.`;
         setErrorMsg(message);
         onError?.(message);
         return;
       }
       const message = (err as { message?: string } | null)?.message || 'Could not create entry';
       const errorMessage = message;
+      console.log('[DEBUG] Setting error message:', errorMessage);
       setErrorMsg(errorMessage);
       onError?.(errorMessage);
     } finally {
+      console.log('[DEBUG] onSubmit finally block, setting submitting to false');
       setSubmitting(false);
     }
   }
@@ -304,6 +378,18 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
             )}
           </div>
 
+          {/* Error/Success Messages */}
+          {errorMsg && (
+            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md p-3">
+              <p className="text-red-700 dark:text-red-300 text-sm">{errorMsg}</p>
+            </div>
+          )}
+          {okMsg && (
+            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md p-3">
+              <p className="text-green-700 dark:text-green-300 text-sm">{okMsg}</p>
+            </div>
+          )}
+
           {/* Submit Button */}
           <Button
             type="submit"
@@ -313,8 +399,6 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
           >
             {submitting ? 'Creating Entry…' : 'Create Log Entry'}
           </Button>
-          {errorMsg && <p className="text-red-500 mt-2">{errorMsg}</p>}
-          {okMsg && <p className="text-green-500 mt-2">{okMsg}</p>}
         </form>
       </CardContent>
     </Card>

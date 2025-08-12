@@ -111,40 +111,47 @@ export async function restFetch(
   path: string,
   init: RequestInit & { timeoutMs?: number; token?: string } = {}
 ): Promise<Response> {
+  console.log('[DEBUG] restFetch called with path:', path);
   const { timeoutMs = 20000, token, ...fetchInit } = init
   
   // Resolve token quickly to avoid hangs
   let accessToken = token
   if (!accessToken) {
+    console.log('[DEBUG] No token provided, attempting to resolve...');
     try {
+      console.log('[DEBUG] Starting getSession with timeout...');
       const authTimeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Auth timed out')), 2500))
       const result = (await Promise.race([
         supabase.auth.getSession(),
         authTimeout,
       ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>
+      console.log('[DEBUG] getSession completed:', { hasSession: !!result?.data?.session, hasToken: !!result?.data?.session?.access_token });
       accessToken = result?.data?.session?.access_token
     } catch (e) {
-      // As a last-ditch fallback, try getUser (may not include token, but at least avoids throwing timeout here)
-      try {
-        const userResult = await supabase.auth.getUser()
-        if (userResult?.data?.user) {
-          // no token available; we will still fail with 401 below, but not with auth-timeout
-          accessToken = undefined
-        }
-      } catch {}
+      console.log('[DEBUG] getSession failed:', e);
+      // Don't do any fallback - fail fast instead of hanging
+      throw new Error('Authentication failed - please refresh and sign in again');
     }
   }
+  
+  console.log('[DEBUG] Final token resolved:', { hasToken: !!accessToken, tokenLength: accessToken?.length });
   if (!accessToken) throw new Error('Not authenticated')
 
   // Setup timeout
   const controller = new AbortController()
   const timeoutId = setTimeout(() => {
+    console.log('[DEBUG] Timeout triggered, aborting request');
     controller.abort('client-timeout')
   }, timeoutMs)
 
   try {
     const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1${path}`
-    console.log('[restFetch] POST', url)
+    console.log('[DEBUG] Making fetch request to:', url);
+    console.log('[DEBUG] Request headers:', {
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY ? 'present' : 'missing',
+      'Authorization': accessToken ? 'Bearer [present]' : 'missing',
+      'Content-Type': 'application/json'
+    });
     
     const response = await fetch(url, {
       ...fetchInit,
@@ -157,12 +164,16 @@ export async function restFetch(
       signal: controller.signal,
     })
     
-    console.log('[restFetch] Response:', response.status)
+    console.log('[DEBUG] Fetch completed with status:', response.status);
+    console.log('[DEBUG] Response headers:', Object.fromEntries(response.headers.entries()));
     return response
   } catch (fetchError) {
-    console.error('[restFetch] Error:', fetchError)
+    console.error('[DEBUG] Fetch error occurred:', fetchError);
+    console.error('[DEBUG] Error name:', (fetchError as Error)?.name);
+    console.error('[DEBUG] Error message:', (fetchError as Error)?.message);
     throw fetchError
   } finally {
+    console.log('[DEBUG] Clearing timeout');
     clearTimeout(timeoutId)
   }
 }
