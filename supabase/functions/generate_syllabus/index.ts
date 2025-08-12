@@ -131,18 +131,15 @@ Deno.serve(async (req) => {
   // OPENAI-POWERED VERSION
   try {
     const { OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } = Deno.env.toObject() as unknown as Env
-    if (!OPENAI_API_KEY) {
-      console.error("Missing OPENAI_API_KEY");
-      return new Response(JSON.stringify({ error: "Server missing OPENAI_API_KEY" }), { status: 500, headers: cors.headers })
-    }
-    
     const authHeader = req.headers.get('authorization') ?? ''
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } }
     })
     
-    // Create service role client for database operations (bypasses RLS)
-    const supabaseService = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    // Prefer service role for writes when available; otherwise fall back to the authed client (RLS)
+    const supabaseWriter = SUPABASE_SERVICE_ROLE_KEY
+      ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+      : supabase
 
     // Try to get user for authentication
     const { data: { user } } = await supabase.auth.getUser()
@@ -169,6 +166,54 @@ CRITICAL REQUIREMENTS:
 Return ONLY valid JSON matching this schema:
 ${JSON.stringify(JSON_SCHEMA_EXAMPLE, null, 2)}`
 
+    // If there is no OpenAI key, immediately use a simple fallback plan path
+    if (!OPENAI_API_KEY) {
+      console.warn("OPENAI_API_KEY missing – using fallback syllabus path")
+      const simplePlan = {
+        title: "100 Days of AI - Fallback Plan",
+        summary: "AI-generated plan (OpenAI unavailable)",
+        duration_days: answers.duration_days || 100,
+        weekly_hours: answers.weekly_hours || 7,
+        tracks: [
+          {
+            name: "Python + FastAPI",
+            objective: "Build practical AI applications",
+            milestones: [
+              { day: 30, title: "First API deployed" },
+              { day: 60, title: "AI integration complete" },
+              { day: 100, title: "Portfolio ready" }
+            ],
+            weeks: [
+              {
+                week: 1,
+                theme: "Getting Started",
+                tasks: [
+                  { day: 1, task: "Install Python and FastAPI" },
+                  { day: 3, task: "Build Hello World API" },
+                  { day: 5, task: "Add database connection" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+      if (user) {
+        try {
+          const { data: inserted } = await supabaseWriter
+            .from('syllabi')
+            .insert({ user_id: user.id, title: simplePlan.title, plan: simplePlan })
+            .select('id,title,plan')
+            .single()
+          if (inserted) {
+            return new Response(JSON.stringify({ syllabus: inserted }), { headers: cors.headers })
+          }
+        } catch (insertErr) {
+          console.warn('Fallback insert failed, returning in-memory syllabus:', insertErr)
+        }
+      }
+      return new Response(JSON.stringify({ syllabus: { id: 'fallback-' + Date.now(), title: simplePlan.title, plan: simplePlan } }), { headers: cors.headers })
+    }
+    
     // Call OpenAI Chat Completions API with timeout
     const controller = new AbortController()
     const timeoutId = setTimeout(() => {
@@ -176,27 +221,73 @@ ${JSON.stringify(JSON_SCHEMA_EXAMPLE, null, 2)}`
       controller.abort()
     }, 120000) // 120 second timeout
     
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-3.5-turbo",
-        messages: [ 
-          { role: "system", content: SYSTEM }, 
-          { role: "user", content: userPromptText }
-        ],
-        temperature: 0.4,
-        max_tokens: 6000,
-      }),
-      signal: controller.signal
-    })
+    let resp: Response | null = null
+    try {
+      resp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-3.5-turbo",
+          messages: [ 
+            { role: "system", content: SYSTEM }, 
+            { role: "user", content: userPromptText }
+          ],
+          temperature: 0.4,
+          max_tokens: 6000,
+        }),
+        signal: controller.signal
+      })
+    } catch (fetchErr) {
+      clearTimeout(timeoutId)
+      console.error('OpenAI fetch error (treating as timeout/abort):', fetchErr)
+      // Fallback to simple plan on abort or network error
+      const simplePlan = {
+        title: "100 Days of AI - Fallback Plan",
+        summary: "AI-generated plan (OpenAI unavailable)",
+        duration_days: answers.duration_days || 100,
+        weekly_hours: answers.weekly_hours || 7,
+        tracks: [
+          {
+            name: "Python + FastAPI",
+            objective: "Build practical AI applications",
+            milestones: [
+              { day: 30, title: "First API deployed" },
+              { day: 60, title: "AI integration complete" },
+              { day: 100, title: "Portfolio ready" }
+            ],
+            weeks: [
+              { week: 1, theme: "Getting Started", tasks: [
+                { day: 1, task: "Install Python and FastAPI" },
+                { day: 3, task: "Build Hello World API" },
+                { day: 5, task: "Add database connection" }
+              ] }
+            ]
+          }
+        ]
+      }
+      if (user) {
+        try {
+          const { data: inserted } = await supabaseWriter
+            .from('syllabi')
+            .insert({ user_id: user.id, title: simplePlan.title, plan: simplePlan })
+            .select('id,title,plan')
+            .single()
+          if (inserted) {
+            return new Response(JSON.stringify({ syllabus: inserted }), { headers: cors.headers })
+          }
+        } catch (e) {
+          console.warn('Fallback insert after abort failed; returning in-memory plan')
+        }
+      }
+      return new Response(JSON.stringify({ syllabus: { id: 'fallback-' + Date.now(), title: simplePlan.title, plan: simplePlan } }), { headers: cors.headers })
+    }
     
     clearTimeout(timeoutId)
 
-    if (!resp.ok) {
+    if (!resp || !resp.ok) {
       const txt = await resp.text()
       console.error("OpenAI API error:", resp.status, txt)
       
@@ -232,18 +323,21 @@ ${JSON.stringify(JSON_SCHEMA_EXAMPLE, null, 2)}`
       
       // Save fallback plan and return
       if (user) {
-        const { data: inserted } = await supabaseService
-          .from('syllabi')
-          .insert({
-            user_id: user.id,
-            title: simplePlan.title,
-            plan: simplePlan
-          })
-          .select('id,title,plan')
-          .single()
-          
-        if (inserted) {
-          return new Response(JSON.stringify({ syllabus: inserted }), { headers: cors.headers })
+        try {
+          const { data: inserted } = await supabaseWriter
+            .from('syllabi')
+            .insert({
+              user_id: user.id,
+              title: simplePlan.title,
+              plan: simplePlan
+            })
+            .select('id,title,plan')
+            .single()
+          if (inserted) {
+            return new Response(JSON.stringify({ syllabus: inserted }), { headers: cors.headers })
+          }
+        } catch (e) {
+          console.warn('Fallback insert failed, returning in-memory syllabus')
         }
       }
       
@@ -360,7 +454,7 @@ ${JSON.stringify(JSON_SCHEMA_EXAMPLE, null, 2)}`
 
     if (user) {
       // Save to database using service role to bypass RLS
-      const { data: inserted, error } = await supabaseService
+      const { data: inserted, error } = await supabaseWriter
         .from('syllabi')
         .insert({
           user_id: user.id,
