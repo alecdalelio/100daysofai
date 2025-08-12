@@ -2,7 +2,9 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { ensureProfile } from '../lib/supabase'
 import { useProfile, updateProfile } from '@/hooks/useProfile'
+import { writeLastProfile } from '@/lib/profileCache'
 import { GRADIENTS, isValidGradient } from '@/constants/gradients'
+import { IANATimeZones } from '@/constants/timezones'
 
 export default function Account() {
   const { userId, session, loading } = useAuth()
@@ -18,6 +20,8 @@ export default function Account() {
   useEffect(() => { console.log('[Account] saving=', saving) }, [saving])
   const [usernameError, setUsernameError] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
+  const browserTZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  const [timeZone, setTimeZone] = useState<string>(browserTZ)
 
   const gradients = GRADIENTS
 
@@ -32,6 +36,7 @@ export default function Account() {
         setUsername(profile.username ?? '')
         setDisplayName(profile.display_name ?? '')
         setAvatarGradient(profile.avatar_gradient ?? '')
+        setTimeZone(profile.time_zone ?? browserTZ)
       }
     }
     load()
@@ -43,23 +48,34 @@ export default function Account() {
     setErrorMsg(null)
     setOkMsg(null)
     try {
-      console.log('[Account] save ->', { username, displayName, avatarGradient })
+      console.log('[Account] save ->', { username, displayName, avatarGradient, timeZone })
+      const safeTZ = IANATimeZones.includes(timeZone) ? timeZone : browserTZ
       const row = await updateProfile({
         username: username?.trim() || undefined,
         display_name: displayName?.trim() || undefined,
         avatar_gradient: avatarGradient || undefined,
+        time_zone: safeTZ,
       }, { token: session?.access_token, userId: userId ?? undefined })
       console.log('[Account] saved row', row)
       setUsername(row.username ?? '')
       setDisplayName(row.display_name ?? '')
       setAvatarGradient(row.avatar_gradient ?? 'grad-1')
-      try { localStorage.setItem('profile:last', JSON.stringify(row)) } catch {}
+      setTimeZone(row.time_zone ?? browserTZ)
+      // Refresh cache for instant hydration across tabs
+      writeLastProfile({
+        id: row.id,
+        username: row.username ?? null,
+        display_name: row.display_name ?? null,
+        avatar_gradient: row.avatar_gradient ?? null,
+        time_zone: row.time_zone ?? null,
+      })
       window.dispatchEvent(new CustomEvent('profile:saved', { detail: row }))
       setOkMsg('Saved')
       await refresh()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Account] save error', err)
-      setErrorMsg(err?.message || 'Save failed')
+      const message = err instanceof Error ? err.message : 'Save failed'
+      setErrorMsg(message)
     } finally {
       setSaving(false)
     }
@@ -79,6 +95,18 @@ export default function Account() {
             onChange={e=>setUsername(e.target.value)}
           />
           {usernameError && <p className="text-sm text-red-600 mt-1">{usernameError}</p>}
+        </div>
+        <div>
+          <label className="block text-sm mb-1">Time zone</label>
+          <select
+            value={timeZone}
+            onChange={e=>setTimeZone(e.target.value)}
+            className="w-full border rounded p-2 bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100"
+          >
+            {IANATimeZones.map(tz => (
+              <option key={tz} value={tz}>{tz}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="block text-sm mb-1">Display name</label>

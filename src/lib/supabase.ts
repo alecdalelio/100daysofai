@@ -1,19 +1,65 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const url = import.meta.env.VITE_SUPABASE_URL!
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY!
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!url || !key) {
   console.warn('Missing Supabase env vars.')
 }
+console.log('[supabase] URL', url)
 
-export const supabase = createClient(supabaseUrl!, supabaseAnonKey!, {
+// Safe one-time migration gate (no destructive cache clearing)
+try {
+  const ref = new URL(import.meta.env.VITE_SUPABASE_URL).host.split('.')[0]
+  const FLAG = `profile:${ref}:migrated_v1`
+  if (!localStorage.getItem(FLAG)) {
+    // Place any one-time, non-destructive migration logic here
+    localStorage.setItem(FLAG, '1')
+  }
+} catch (_e) { void 0 }
+
+export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    storage: window.localStorage,
   },
 })
+
+// Robust fallback: if we arrive with an OAuth hash, persist it explicitly
+export async function bootstrapSessionFromHash(): Promise<boolean> {
+  try {
+    if (typeof window === 'undefined') return false
+    const hash = window.location.hash
+    if (!hash || !hash.includes('access_token=')) return false
+    const params = new URLSearchParams(hash.replace(/^#/, ''))
+    const access_token = params.get('access_token') || undefined
+    const refresh_token = params.get('refresh_token') || undefined
+    if (!access_token || !refresh_token) return false
+    const { data, error } = await supabase.auth.setSession({ access_token, refresh_token })
+    console.log('[auth.bootstrap] setSession', { hasError: !!error, hasSession: !!data?.session })
+    if (error || !data?.session) {
+      try {
+        // Try refreshing using the refresh token as a fallback
+        const r = await supabase.auth.refreshSession({ refresh_token: refresh_token! })
+        console.log('[auth.bootstrap] refreshSession fallback', { hasError: !!r.error, hasSession: !!r.data?.session })
+      } catch {}
+    }
+    // Force-read once to ensure persistence
+    const s = await supabase.auth.getSession()
+    console.log('[auth.bootstrap] getSession after persist', { hasSession: !!s.data?.session })
+    // Clean URL
+    try { window.location.hash = '' } catch {}
+    try {
+      const cleanUrl = window.location.pathname + window.location.search
+      window.history.replaceState({}, document.title, cleanUrl)
+    } catch {}
+    return true
+  } catch (_e) {
+    return false
+  }
+}
 
 // Helper to invoke Edge Functions with user JWT and good errors
 export async function callFn<T = unknown>(

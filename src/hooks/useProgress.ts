@@ -6,7 +6,7 @@ type Progress = { day: number; percent: number };
 const cacheKey = (uid: string) => `progress:${uid}`;
 
 export function useProgress(opts: { countDrafts?: boolean } = {}) {
-  const { countDrafts = true } = opts;
+  const { countDrafts = false } = opts; // default to published-only
   const [progress, setProgress] = useState<Progress>({ day: 0, percent: 0 });
   const [loading, setLoading] = useState(true);
   const uidRef = useRef<string | null>(null);
@@ -39,12 +39,9 @@ export function useProgress(opts: { countDrafts?: boolean } = {}) {
     setLoading(true);
     const q = supabase
       .from('logs')
-      .select('day')
+      .select('day_key')
       .eq('user_id', uid)
-      .order('day', { ascending: false })
-      .limit(1);
-
-    if (!countDrafts) (q as any).eq('is_published', true);
+      .eq('is_published', true);
 
     const { data: rows, error } = await q;
     if (error) {
@@ -52,7 +49,11 @@ export function useProgress(opts: { countDrafts?: boolean } = {}) {
       setLoading(false);
       return;
     }
-    const day = (rows as any)?.[0]?.day ?? 0;
+    const dates = new Set<string>();
+    (rows as any)?.forEach((r: { day_key?: string | null }) => {
+      if (r?.day_key) dates.add(r.day_key);
+    });
+    const day = dates.size;
     const next = { day, percent: Math.min(100, Math.max(0, Math.round((day / 100) * 100))) };
     setProgress(next);
     try { localStorage.setItem(cacheKey(uid), JSON.stringify(next)); } catch {}

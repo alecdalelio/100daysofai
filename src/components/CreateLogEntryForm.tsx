@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,6 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase, restFetch } from '@/lib/supabase';
+import { useProfile } from '@/hooks/useProfile';
+import { nextEligiblePublish } from '@/lib/eligibility';
 import { useAuth } from '@/auth/AuthProvider';
 import { useNavigate } from 'react-router-dom';
 
@@ -58,7 +60,7 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
     };
 
     // Use direct REST to avoid any supabase-js client stalls
-    const resp = await restFetch(`/logs?select=id,day,is_published`, {
+    const resp = await restFetch(`/logs?select=id,day,is_published,day_key`, {
       method: 'POST',
       headers: { 'Prefer': 'return=representation' },
       body: JSON.stringify(payload),
@@ -74,7 +76,7 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
     }
     const rows = text ? JSON.parse(text) : [];
     const row = Array.isArray(rows) ? rows[0] : rows;
-    return row as { id: string; day: number; is_published: boolean };
+    return row as { id: string; day: number; is_published: boolean; day_key?: string };
   };
 
   try {
@@ -95,6 +97,7 @@ interface CreateLogEntryFormProps {
 
 const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => {
   const { userId } = useAuth();
+  const { profile } = useProfile();
   const navigate = useNavigate();
   const [formData, setFormData] = useState<NewLog>({
     day: 1,
@@ -107,6 +110,8 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [publishDisabled, setPublishDisabled] = useState<boolean>(false);
+  const [nextEligibleText, setNextEligibleText] = useState<string | null>(null);
 
   const handleInputChange = (field: keyof NewLog, value: string | number | boolean) => {
     setFormData(prev => ({
@@ -114,6 +119,41 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
       [field]: value
     }));
   };
+
+  // Check if already published for current effective day in user's TZ
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!userId) return;
+        const tz = profile?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        // effective day is (now in tz - 3h).toISODate()
+        const now = new Date();
+        // Do a simple client calc without luxon to avoid heavy deps here
+        // We'll reuse nextEligiblePublish for pretty message
+        const offsetNow = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+        const y = offsetNow.getUTCFullYear();
+        const m = String(offsetNow.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(offsetNow.getUTCDate()).padStart(2, '0');
+        const effective = `${y}-${m}-${d}`;
+
+        const { data: rows, error } = await supabase
+          .from('logs')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('is_published', true)
+          .eq('day_key', effective)
+          .limit(1);
+        if (!error && rows && rows.length > 0) {
+          setPublishDisabled(true);
+          const { pretty } = nextEligiblePublish(tz);
+          setNextEligibleText(`Next eligible: ${pretty}`);
+        } else {
+          setPublishDisabled(false);
+          setNextEligibleText(null);
+        }
+      } catch {}
+    })();
+  }, [userId, profile?.time_zone]);
 
   async function onSubmit(e?: React.FormEvent) {
     e?.preventDefault?.();
@@ -150,6 +190,15 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
       navigate(`/log/${res.id}`);
     } catch (err: unknown) {
       console.error('[Log] create error', err);
+      const code = (err as any)?.code as string | undefined;
+      if (code === '23505') {
+        const tz = profile?.time_zone || 'UTC';
+        const { pretty } = nextEligiblePublish(tz);
+        const message = `You’ve already published for today. Next eligible: ${pretty}.`;
+        setErrorMsg(message);
+        onError?.(message);
+        return;
+      }
       const message = (err as { message?: string } | null)?.message || 'Could not create entry';
       const errorMessage = message;
       setErrorMsg(errorMessage);
@@ -239,8 +288,9 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
           <div className="flex items-center space-x-2">
             <Switch
               id="is_published"
-              checked={formData.is_published}
-              onCheckedChange={(checked) => handleInputChange('is_published', checked)}
+              checked={formData.is_published && !publishDisabled}
+              onCheckedChange={(checked) => !publishDisabled && handleInputChange('is_published', checked)}
+              disabled={publishDisabled}
             />
             <Label htmlFor="is_published" className="text-sm font-medium">
               Publish Entry
@@ -249,6 +299,9 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
               <Badge variant="secondary" className="ml-2">
                 Public
               </Badge>
+            )}
+            {publishDisabled && nextEligibleText && (
+              <span className="text-sm text-muted-foreground ml-2">{nextEligibleText}</span>
             )}
           </div>
 

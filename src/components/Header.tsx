@@ -5,39 +5,46 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { gradientClass } from '@/constants/gradients'
 import { useProfile } from '@/hooks/useProfile'
+import UserBadge from '@/components/UserBadge'
 
 export default function Header() {
   const { userId } = useAuth()
-  const { profile, refresh } = useProfile()
+  const { profile } = useProfile()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [hasSyllabus, setHasSyllabus] = useState<boolean>(true)
 
   useEffect(() => {
-    console.log('[Header] profile', profile)
+    console.log('[Header] visible profile', profile)
   }, [profile])
 
-  // Refresh header profile when Account reports a save
+  // Temporary assert to ensure the shared UserBadge is mounted
+  useEffect(() => {
+    const el = document.querySelector('[data-testid="user-badge-name"]') as HTMLElement | null
+    console.log('[Header] badge present =', !!el, 'text =', el?.textContent)
+  })
+
+  // Still listen to profile:saved for logs, but store already updates proactively
   useEffect(() => {
     const onSaved = (ev: Event) => {
       console.log('[Header] received profile:saved', (ev as CustomEvent).detail)
-      refresh()
     }
     window.addEventListener('profile:saved', onSaved)
     return () => window.removeEventListener('profile:saved', onSaved)
-  }, [refresh])
+  }, [])
 
   // Fallback: boot-time hydrate from last saved local cache and session user
   useEffect(() => {
     if (!profile) {
       try {
-        const raw = localStorage.getItem('profile:last')
+        const projectRef = new URL(import.meta.env.VITE_SUPABASE_URL).host.split('.')[0]
+        const raw = localStorage.getItem(`profile:${projectRef}:last`)
         if (raw) {
           const parsed = JSON.parse(raw)
           console.log('[Header] hydrate from cache', parsed)
         }
-      } catch {}
+      } catch (_e) { /* noop */ }
     }
   }, [profile])
 
@@ -69,20 +76,20 @@ export default function Header() {
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-full px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800 focus-ring"
+                className={[
+                  'inline-flex items-center rounded-full px-2 py-1',
+                  'border border-white/15 bg-black/40 backdrop-blur',
+                  'shadow-none ring-0 transition-all duration-150',
+                  'hover:border-white/30',
+                  'focus-visible:outline-none focus-visible:ring-2',
+                  'focus-visible:ring-fuchsia-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-black',
+                  // add a visible purple outline only while menu is open
+                  menuOpen ? 'ring-2 ring-fuchsia-400/40 ring-offset-2 ring-offset-black' : '',
+                ].join(' ')}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
               >
-                {profile?.avatar_gradient ? (
-                  profile.avatar_gradient.startsWith('grad-') ? (
-                    <div className={`h-7 w-7 rounded-full ${gradientClass(profile.avatar_gradient)}`} />
-                  ) : (
-                    <img src={profile.avatar_gradient} alt="avatar" className="h-7 w-7 rounded-full object-cover" />
-                  )
-                ) : (
-                  <div className="h-7 w-7 rounded-full border border-gray-300 dark:border-white/20 bg-white/60 dark:bg-white/10" />
-                )}
-                <span className="text-gray-900 dark:text-gray-100">{display}</span>
+                <UserBadge />
               </button>
               <div
                 role="menu"
@@ -93,8 +100,9 @@ export default function Header() {
                   className="block px-3 py-2 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
                   role="menuitem"
                   onClick={() => setMenuOpen(false)}
+                  aria-label={display}
                 >
-                  Account
+                  <UserBadge />
                 </Link>
                 {!hasSyllabus && (
                   <Link

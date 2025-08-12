@@ -1,129 +1,132 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase, ensureProfile as ensureProfileLib } from '@/lib/supabase'
+import { useProfileStore } from '@/stores/profileStore'
 
 export type ProfileRow = {
   id: string
   username: string | null
   display_name: string | null
   avatar_gradient: string | null
+  time_zone?: string | null
+}
+
+const projectRef = new URL(import.meta.env.VITE_SUPABASE_URL).host.split('.')[0]
+const userKey = (uid: string) => `profile:${projectRef}:${uid}`
+const lastKey = `profile:${projectRef}:last`
+
+function nameFromSession(session?: any) {
+  const u = session?.user
+  return (
+    u?.user_metadata?.name ??
+    u?.user_metadata?.full_name ??
+    (u?.email ? u.email.split('@')[0] : null)
+  )
+}
+
+function normalize(row: any, session?: any) {
+  if (!row) return null
+  const fallback = nameFromSession(session)
+  // Guarantee a username when logged in: prefer row.username, then any display name, then session-derived
+  const username = row.username ?? row.display_name ?? row.displayName ?? fallback ?? null
+  // Keep display_name stable (avoid flicker); do not invent one if missing
+  const display_name = row.display_name ?? row.displayName ?? null
+  return {
+    id: row.id,
+    username,
+    display_name,
+    avatar_gradient: row.avatar_gradient ?? row.avatar_url ?? null,
+    time_zone: row.time_zone ?? null,
+  }
 }
 
 export function useProfile() {
-  const [profile, setProfile] = useState<ProfileRow | null>(() => {
-    try {
-      const raw = localStorage.getItem('profile:last')
-      return raw ? (JSON.parse(raw) as ProfileRow) : null
-    } catch {
-      return null
-    }
-  })
+  const { profile, lastNonNull, provisional, setProfile: setStoreProfile, setProvisional, clearOnSignOut } = useProfileStore()
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const userIdRef = useRef<string | null>(null)
   
-  const cacheKey = useCallback((uid?: string | null) => {
-    // Currently using a single-slot cache; keep API for future per-user keys
-    return 'profile:last'
-  }, [])
-
-  const hydrateFromCache = useCallback(async () => {
+  // 1) Instant hydrate from last-known cache (no UID required)
+  useEffect(() => {
     try {
-      const raw = localStorage.getItem(cacheKey(userIdRef.current))
-      if (raw) {
-        const parsed = JSON.parse(raw) as ProfileRow
-        setProfile(parsed)
-      }
+      const cached = localStorage.getItem(lastKey)
+      if (cached) setProvisional(normalize(JSON.parse(cached)))
     } catch {}
-  }, [cacheKey])
+  }, [setProvisional])
 
   const fetchProfile = useCallback(async () => {
     try {
-      // Resolve auth with a timeout and fallbacks
-      const timeout = (ms: number) => new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Auth timed out')), ms))
-      let session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session'] | null = null
-      try {
-        const sessRes = (await Promise.race([
-          supabase.auth.getSession(),
-          timeout(2500),
-        ])) as Awaited<ReturnType<typeof supabase.auth.getSession>>
-        session = sessRes?.data?.session ?? null
-      } catch {}
-      if (!session) {
-        try {
-          const userRes = (await Promise.race([
-            supabase.auth.getUser(),
-            timeout(2500),
-          ])) as Awaited<ReturnType<typeof supabase.auth.getUser>>
-          session = userRes?.data?.user ? { ...({} as any), user: userRes.data.user, access_token: (userRes as any)?.data?.session?.access_token } : null
-        } catch {}
-      }
-      const user = session?.user
-      if (!user) {
-        console.log('[useProfile] auth user temporarily null — keeping cached profile')
+      const { data: sess } = await supabase.auth.getSession()
+      const uid = sess?.session?.user?.id || null
+      userIdRef.current = uid
+
+      if (!uid) {
+        // transient refresh blip
         setIsLoading(false)
         setTimeout(() => { void fetchProfile() }, 750)
         return
       }
-      userIdRef.current = user.id
+
       setIsLoading(true)
       setError(null)
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${user.id}&select=id,username,display_name,avatar_url`
-      const resp = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${session?.access_token ?? ''}`,
-        }
-      })
-      const rows = await resp.json()
-      const row = Array.isArray(rows) ? rows[0] : rows
-      const mapped: ProfileRow | null = row ? {
-        id: row.id,
-        username: row.username ?? null,
-        display_name: row.display_name ?? null,
-        avatar_gradient: row.avatar_gradient ?? row.avatar_url ?? null,
-      } : null
-      setProfile(mapped)
-      try { if (mapped) localStorage.setItem(cacheKey(user.id), JSON.stringify(mapped)) } catch {}
-    } catch (e: any) {
-      // On failure, try to hydrate from cache so the Header shows something
+
+      // Fast paint from per-user cache and normalize immediately
       try {
-        const raw = localStorage.getItem(cacheKey(userIdRef.current))
-        if (raw) {
-          const parsed = JSON.parse(raw) as ProfileRow
-          setProfile(parsed)
+        const ck = localStorage.getItem(userKey(uid))
+        if (ck) {
+          const norm = normalize(JSON.parse(ck), sess?.session)
+          setStoreProfile(norm)
+          try {
+            localStorage.setItem(userKey(uid), JSON.stringify(norm))
+            localStorage.setItem(lastKey, JSON.stringify(norm))
+          } catch {}
         }
       } catch {}
+
+      const { data: row, error: err } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_gradient, avatar_url, time_zone')
+        .eq('id', uid)
+        .maybeSingle()
+
+      if (err) throw err
+
+      const norm = normalize(row, sess?.session)
+      setStoreProfile(norm)
+      try {
+        localStorage.setItem(userKey(uid), JSON.stringify(norm))
+        localStorage.setItem(lastKey, JSON.stringify(norm))
+      } catch {}
+    } catch (e: any) {
       setError(e?.message || 'Failed to load profile')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [setStoreProfile])
 
   useEffect(() => { fetchProfile() }, [fetchProfile])
 
-  // React to auth state changes: only clear on SIGNED_OUT; otherwise hydrate then fetch
+  // Auth events: only clear on SIGNED_OUT; otherwise fetch and keep provisional/last
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
         const uid = userIdRef.current
         try {
-          if (uid) localStorage.removeItem(cacheKey(uid))
-          else localStorage.removeItem(cacheKey(null))
+          if (uid) localStorage.removeItem(userKey(uid))
+          localStorage.removeItem(lastKey)
         } catch {}
-        console.log('[useProfile] signed out — clearing profile cache')
-        setProfile(null)
+        console.log('[useProfile] signed out — clearing profile cache and store')
+        clearOnSignOut()
         setIsLoading(false)
         return
       }
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-        void hydrateFromCache().then(() => fetchProfile())
+      if (['INITIAL_SESSION', 'SIGNED_IN', 'TOKEN_REFRESHED', 'USER_UPDATED'].includes(event)) {
+        void fetchProfile()
       }
     })
     return () => {
       subscription.unsubscribe()
     }
-  }, [cacheKey, fetchProfile, hydrateFromCache])
+  }, [fetchProfile, clearOnSignOut])
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null
@@ -137,7 +140,8 @@ export function useProfile() {
     const onProfileSaved = (ev: Event) => {
       const detail = (ev as CustomEvent).detail as Partial<ProfileRow> | undefined
       if (detail) {
-        setProfile((prev) => ({ ...(prev ?? {} as any), ...detail }))
+        const merged = { ...(useProfileStore.getState().profile ?? useProfileStore.getState().lastNonNull ?? {} as any), ...detail } as ProfileRow
+        setStoreProfile(merged)
       }
       fetchProfile()
     }
@@ -148,10 +152,11 @@ export function useProfile() {
     }
   }, [fetchProfile])
 
-  return { profile, isLoading, error, refresh: fetchProfile }
+  const visible = profile ?? provisional ?? lastNonNull
+  return { profile: visible, isLoading, error, refresh: fetchProfile }
 }
 
-type PartialProfile = { username?: string; display_name?: string; avatar_gradient?: string }
+type PartialProfile = { username?: string; display_name?: string; avatar_gradient?: string; time_zone?: string }
 type UpdateOpts = { token?: string; userId?: string }
 
 export async function updateProfile(partial: PartialProfile, opts: UpdateOpts = {}) {
@@ -222,6 +227,7 @@ export async function updateProfile(partial: PartialProfile, opts: UpdateOpts = 
       username: row.username ?? null,
       display_name: row.display_name ?? null,
       avatar_gradient: row.avatar_gradient ?? row.avatar_url ?? null,
+      time_zone: row.time_zone ?? 'UTC',
     } as ProfileRow
   } finally {
     clearTimeout(timeoutId)
