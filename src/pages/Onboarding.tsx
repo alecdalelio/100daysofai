@@ -1,45 +1,72 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
-import { callEdgeFunction } from '../lib/supabase'
+import { EnhancedOnboardingData } from '../lib/onboardingTypes'
+import { Button } from '../components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
+import { MessageCircle, FileText, Sparkles, Bot, Clock } from 'lucide-react'
+import { ConversationalOnboarding } from '../components/ConversationalOnboarding'
+import { Step1Welcome } from '../components/onboarding/Step1Welcome'
+import { Step2Experience } from '../components/onboarding/Step2Experience'
+import { Step3Goals } from '../components/onboarding/Step3Goals'
+import { Step4Specialization } from '../components/onboarding/Step4Specialization'
+import { Step5TimeCommitment } from '../components/onboarding/Step5TimeCommitment'
+import { Step6Preferences } from '../components/onboarding/Step6Preferences'
+import { Step7Review } from '../components/onboarding/Step7Review'
 
-type Answers = {
-  experience_level: 'beginner'|'intermediate'|'advanced'
-  goals: string[]
-  weekly_hours: number
-  duration_days: number
-  focus_areas: string[]
-  output_preferences: string[]
-  note?: string
-}
-
-const GOAL_OPTIONS = [
-  'Ship 2–5 publishable AI‑native tools',
-  'Improve Python + FastAPI',
-  'Master Pandas + data workflows',
-  'Learn LLM frameworks (LangChain/LlamaIndex)',
-  'Automation (n8n, Playwright, agents)',
-  'Frontend polish (Next.js/Tailwind/MDX)',
-]
-
-const FOCUS_OPTIONS = [
-  'Python + FastAPI','Pandas','LLM frameworks',
-  'Automation (n8n/Playwright)','Frontend (Next.js/Tailwind)','Vector DBs',
-]
+type OnboardingMode = 'selection' | 'conversational' | 'traditional'
 
 export default function Onboarding() {
   const { session, loading } = useAuth()
   const navigate = useNavigate()
+  const [mode, setMode] = useState<OnboardingMode>('selection')
   const [step, setStep] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const [answers, setAnswers] = useState<Answers>({
-    experience_level: 'intermediate',
-    goals: [],
+  const [data, setData] = useState<EnhancedOnboardingData>({
+    // Learning Profile
+    currentRole: '',
+    industry: '',
+    motivation: [],
+    learningStyles: [],
+    
+    // Experience Levels
+    experienceLevels: {
+      ai_ml: 'beginner',
+      programming: 'basic',
+      math_stats: 'basic'
+    },
+    previousAIExperience: [],
+    
+    // Goals & Path
+    primaryGoals: [],
+    learningTrack: '',
+    projectPreference: 'balanced',
+    
+    // Specialization
+    industryTrack: '',
+    specialization: '',
+    
+    // Time Commitment
+    timeAvailability: {
+      dailyHours: 1,
+      preferredTimes: [],
+      weekendLearning: true,
+      flexibleSchedule: false
+    },
+    learningPace: 'steady',
     weekly_hours: 7,
     duration_days: 100,
-    focus_areas: [],
-    output_preferences: ['docs','code-first'],
+    
+    // Preferences
+    progressTrackingStyle: 'simple',
+    challengeLevel: 'comfortable',
+    feedbackFrequency: 'weekly',
+    communityInvolvement: false,
+    accountabilityLevel: 'private',
+    successMetrics: [],
+    
+    // Optional
     note: ''
   })
 
@@ -53,6 +80,18 @@ export default function Onboarding() {
   }
   // Do not block on session; ProtectedRoute already ensures auth
 
+  function updateData(updates: Partial<EnhancedOnboardingData>) {
+    setData(prev => ({ ...prev, ...updates }))
+  }
+
+  function nextStep() {
+    setStep(prev => Math.min(prev + 1, 7))
+  }
+
+  function prevStep() {
+    setStep(prev => Math.max(prev - 1, 1))
+  }
+
   async function submit() {
     setSubmitting(true)
     setErrorMsg(null)
@@ -63,53 +102,21 @@ export default function Onboarding() {
     }, SAFETY_MS)
     
     try {
-      // First test basic connectivity to Supabase
-      console.log('[Onboarding] Testing Supabase connectivity...')
-      console.log('[Onboarding] VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL)
-      console.log('[Onboarding] VITE_SUPABASE_ANON_KEY present:', !!import.meta.env.VITE_SUPABASE_ANON_KEY)
-      
-      // Test 1: Basic ping to Supabase REST API
-      try {
-        const pingController = new AbortController()
-        setTimeout(() => pingController.abort(), 5000)
-        
-        const pingResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`, {
-          method: 'GET',
-          headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          signal: pingController.signal,
-        })
-        console.log('[Onboarding] Supabase REST ping response:', pingResponse.status, pingResponse.statusText)
-      } catch (pingError) {
-        console.error('[Onboarding] Supabase REST ping failed:', pingError)
-        throw new Error(`Cannot connect to Supabase REST API: ${pingError.message}`)
-      }
-
-      // Test 2: Test Edge Functions endpoint specifically
-      try {
-        const edgeController = new AbortController()
-        setTimeout(() => edgeController.abort(), 5000)
-        
-        const edgeResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate_syllabus`, {
-          method: 'OPTIONS', // Just test if the endpoint exists
-          headers: {
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          signal: edgeController.signal,
-        })
-        console.log('[Onboarding] Edge Functions OPTIONS response:', edgeResponse.status, edgeResponse.statusText)
-        
-        if (edgeResponse.status === 404) {
-          throw new Error('generate_syllabus Edge Function not found (404) - may not be deployed')
-        }
-      } catch (edgeError) {
-        console.error('[Onboarding] Edge Functions test failed:', edgeError)
-        throw new Error(`Edge Functions not accessible: ${edgeError.message}`)
+      // Convert enhanced data to legacy format for compatibility with existing Edge Function
+      const legacyAnswers = {
+        experience_level: data.experienceLevels.ai_ml,
+        goals: data.primaryGoals,
+        weekly_hours: data.weekly_hours,
+        duration_days: data.duration_days,
+        focus_areas: data.specialization ? [data.specialization] : [],
+        output_preferences: ['docs', 'code-first'],
+        note: data.note,
+        // Include enhanced data for future use
+        enhanced_data: data
       }
       
       const start = Date.now()
-      console.log('[Onboarding] BYPASSING callEdgeFunction - using direct fetch')
+      console.log('[Onboarding] Generating syllabus with enhanced data')
       
       // Direct fetch to bypass any issues with callEdgeFunction
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate_syllabus`, {
@@ -119,7 +126,7 @@ export default function Onboarding() {
           'Authorization': session?.access_token ? `Bearer ${session.access_token}` : `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers: legacyAnswers }),
         signal: AbortSignal.timeout(150000) // 150 second timeout to allow OpenAI API call
       })
       
@@ -145,105 +152,204 @@ export default function Onboarding() {
     }
   }
 
+  // Mode Selection Screen
+  if (mode === 'selection') {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold mb-3">Create Your AI Learning Plan</h1>
+          <p className="text-muted-foreground text-lg">
+            Choose how you'd like to set up your personalized learning journey
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Conversational Mode */}
+          <Card className="border-2 hover:border-primary transition-colors cursor-pointer group">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                  <Bot className="h-6 w-6 text-primary" />
+                </div>
+                Talk with AI Coach
+                <Sparkles className="h-4 w-4 text-yellow-500" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground">
+                Have a natural conversation with our AI coach. Just describe your background and goals - 
+                we'll extract everything we need through chat.
+              </p>
+              
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <Clock className="h-4 w-4" />
+                  <span>2-3 minutes</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Voice or text input</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-purple-600">
+                  <Sparkles className="h-4 w-4" />
+                  <span>Smart data extraction</span>
+                </div>
+              </div>
+
+              <Button 
+                onClick={() => setMode('conversational')}
+                className="w-full"
+                size="lg"
+              >
+                Start Conversation
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Traditional Form */}
+          <Card className="border-2 hover:border-primary transition-colors cursor-pointer group">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-muted group-hover:bg-muted/80 transition-colors">
+                  <FileText className="h-6 w-6" />
+                </div>
+                Traditional Form
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground">
+                Complete a comprehensive 7-step form with detailed options for 
+                experience levels, goals, preferences, and time commitment.
+              </p>
+              
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-orange-600">
+                  <Clock className="h-4 w-4" />
+                  <span>5-7 minutes</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <FileText className="h-4 w-4" />
+                  <span>Detailed customization</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Complete control</span>
+                </div>
+              </div>
+
+              <Button 
+                onClick={() => setMode('traditional')}
+                variant="outline"
+                className="w-full"
+                size="lg"
+              >
+                Use Traditional Form
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="text-center mt-8">
+          <p className="text-sm text-muted-foreground">
+            Both methods create the same high-quality, personalized learning plan
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Conversational Mode
+  if (mode === 'conversational') {
+    return (
+      <ConversationalOnboarding
+        onComplete={(data) => {
+          setData(data)
+          // Navigate directly to syllabus generation since conversation handles it
+        }}
+        onFallbackToForm={() => setMode('traditional')}
+      />
+    )
+  }
+
+  // Traditional Form Mode
   return (
-    <div className="mx-auto max-w-2xl p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Create your personalized syllabus</h1>
+    <div className="mx-auto max-w-4xl p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Enhanced Learning Plan Setup</h1>
+          <p className="text-muted-foreground">Step {step} of 7</p>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={() => setMode('selection')}
+          className="text-sm"
+        >
+          ← Choose Different Method
+        </Button>
+      </div>
 
       {step === 1 && (
-        <section className="card p-4 space-y-4">
-          <div>
-            <label className="block text-sm mb-1">Your current level</label>
-            <select
-              className="w-full border rounded p-2"
-              value={answers.experience_level}
-              onChange={(e)=>setAnswers(a=>({...a, experience_level: e.target.value as 'beginner' | 'intermediate' | 'advanced'}))}
-            >
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm mb-2">Your goals</label>
-            <div className="flex flex-wrap gap-2">
-              {GOAL_OPTIONS.map(g=>(
-                <button
-                  key={g}
-                  type="button"
-                  onClick={()=>setAnswers(a=>({...a, goals: a.goals.includes(g) ? a.goals.filter(x=>x!==g) : [...a.goals,g]}))}
-                  className={`px-3 py-1.5 rounded-full border text-sm ${answers.goals.includes(g) ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'btn-secondary'}`}
-                >{g}</button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <label className="block text-sm mb-1">Weekly hours</label>
-              <input type="number" min={2} max={30} className="w-full border rounded p-2"
-                value={answers.weekly_hours}
-                onChange={(e)=>setAnswers(a=>({...a, weekly_hours: Number(e.target.value)}))}
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm mb-1">Duration (days)</label>
-              <select className="w-full border rounded p-2"
-                value={answers.duration_days}
-                onChange={(e)=>setAnswers(a=>({...a, duration_days: Number(e.target.value)}))}
-              >
-                <option value={30}>30</option>
-                <option value={60}>60</option>
-                <option value={100}>100</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <button className="btn btn-primary focus-ring" onClick={()=>setStep(2)}>Next</button>
-          </div>
-        </section>
+        <Step1Welcome
+          data={data}
+          onUpdate={updateData}
+          onNext={nextStep}
+        />
       )}
 
       {step === 2 && (
-        <section className="card p-4 space-y-4">
-          <div>
-            <label className="block text-sm mb-2">Focus areas</label>
-            <div className="flex flex-wrap gap-2">
-              {FOCUS_OPTIONS.map(f=>(
-                <button key={f} type="button"
-                  onClick={()=>setAnswers(a=>({...a, focus_areas: a.focus_areas.includes(f)? a.focus_areas.filter(x=>x!==f) : [...a.focus_areas,f]}))}
-                  className={`px-3 py-1.5 rounded-full border text-sm ${answers.focus_areas.includes(f) ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'btn-secondary'}`}
-                >{f}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Learning style notes (optional)</label>
-            <textarea className="w-full border rounded p-2" rows={4}
-              placeholder="Prefer code-first tasks, short docs, minimal videos…"
-              value={answers.note ?? ''}
-              onChange={(e)=>setAnswers(a=>({...a, note: e.target.value}))}
-            />
-          </div>
-          <div className="flex justify-between">
-            <button className="btn btn-secondary focus-ring" onClick={()=>setStep(1)}>Back</button>
-            <button className="btn btn-primary focus-ring" onClick={()=>setStep(3)}>Next</button>
-          </div>
-        </section>
+        <Step2Experience
+          data={data}
+          onUpdate={updateData}
+          onNext={nextStep}
+          onBack={prevStep}
+        />
       )}
 
       {step === 3 && (
-        <section className="card p-4 space-y-4">
-          <h2 className="text-lg font-medium">Review</h2>
-          <pre className="text-xs overflow-auto p-3 rounded bg-gray-50 dark:bg-gray-900">{JSON.stringify(answers, null, 2)}</pre>
-          {errorMsg && (
-            <div className="text-sm text-red-600">{errorMsg}</div>
-          )}
-          <div className="flex justify-between">
-            <button className="btn btn-secondary focus-ring" onClick={()=>setStep(2)}>Back</button>
-            <button className="btn btn-primary focus-ring" onClick={submit} disabled={submitting}>
-              {submitting ? 'Generating…' : 'Generate syllabus'}
-            </button>
-          </div>
-        </section>
+        <Step3Goals
+          data={data}
+          onUpdate={updateData}
+          onNext={nextStep}
+          onBack={prevStep}
+        />
+      )}
+
+      {step === 4 && (
+        <Step4Specialization
+          data={data}
+          onUpdate={updateData}
+          onNext={nextStep}
+          onBack={prevStep}
+        />
+      )}
+
+      {step === 5 && (
+        <Step5TimeCommitment
+          data={data}
+          onUpdate={updateData}
+          onNext={nextStep}
+          onBack={prevStep}
+        />
+      )}
+
+      {step === 6 && (
+        <Step6Preferences
+          data={data}
+          onUpdate={updateData}
+          onNext={nextStep}
+          onBack={prevStep}
+        />
+      )}
+
+      {step === 7 && (
+        <Step7Review
+          data={data}
+          onUpdate={updateData}
+          onSubmit={submit}
+          onBack={prevStep}
+          isSubmitting={submitting}
+          errorMsg={errorMsg}
+        />
       )}
     </div>
   )
