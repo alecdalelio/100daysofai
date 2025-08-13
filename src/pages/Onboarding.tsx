@@ -14,6 +14,7 @@ import { Step5TimeCommitment } from '../components/onboarding/Step5TimeCommitmen
 import { Step6Preferences } from '../components/onboarding/Step6Preferences'
 import { Step7Review } from '../components/onboarding/Step7Review'
 import { QuickForm } from '../components/onboarding/QuickForm'
+import { GlossaryHint } from '../components/GlossaryHint'
 
 type OnboardingMode = 'selection' | 'conversational' | 'traditional' | 'quick'
 
@@ -182,7 +183,7 @@ export default function Onboarding() {
                   
                   <p className="text-muted-foreground">
                     Have a natural conversation with our AI coach. Just describe your background and goals - 
-                    we'll extract everything we need through chat.
+                    we'll extract everything we need through chat. Learn about <GlossaryHint term="RAG">RAG</GlossaryHint> and other AI concepts as you go.
                   </p>
                   
                   <div className="space-y-2">
