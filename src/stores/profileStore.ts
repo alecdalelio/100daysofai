@@ -6,6 +6,10 @@ export type Profile = {
   display_name: string | null;
   avatar_gradient: string | null;
   time_zone?: string | null;
+  linkedin_profile_url?: string | null;
+  linkedin_headline?: string | null;
+  linkedin_company?: string | null;
+  linkedin_id?: string | null;
 } | null;
 
 type State = {

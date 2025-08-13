@@ -6,6 +6,9 @@ type FetchedProfile = {
   username: string | null
   display_name: string | null
   avatar_url: string | null
+  linkedin_profile_url: string | null
+  linkedin_headline: string | null
+  linkedin_company: string | null
 }
 
 export interface LogsQuery {
@@ -66,7 +69,7 @@ export async function fetchLogsWithProfiles(options: LogsQuery = {}): Promise<Lo
     if (userIds.length > 0) {
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url')
+        .select('id, username, display_name, avatar_url, linkedin_profile_url, linkedin_headline, linkedin_company')
         .in('id', userIds)
       
       if (profilesError) {
@@ -92,6 +95,9 @@ export async function fetchLogsWithProfiles(options: LogsQuery = {}): Promise<Lo
               display_name: p.display_name ?? null,
               // App treats avatar_url as avatar_gradient (could be gradient key or URL)
               avatar_gradient: p.avatar_url ?? null,
+              linkedin_profile_url: p.linkedin_profile_url ?? null,
+              linkedin_headline: p.linkedin_headline ?? null,
+              linkedin_company: p.linkedin_company ?? null,
             }
           : null,
       }

@@ -66,6 +66,11 @@ export default function UserBadge() {
             <i data-testid="user-badge-dot" className={`h-5 w-5 rounded-full ${gradientClass(avatarValue)}`} />
           )}
           <span data-testid="user-badge-name" className="text-sm">{name || sessName || 'Account'}</span>
+          {profile?.linkedin_profile_url && (
+            <span className="text-xs text-[#0077B5]" title="LinkedIn connected">
+              in
+            </span>
+          )}
         </>
       )}
     </span>

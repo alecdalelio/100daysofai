@@ -147,7 +147,7 @@ const Home = () => {
                           <CardTitle className="text-2xl md:text-3xl group-hover:gradient-text-electric transition-all duration-500 leading-tight">
                             {entry.title}
                           </CardTitle>
-                          <AuthorDisplay profile={entry.profiles} showAvatar={true} />
+                          <AuthorDisplay profile={entry.profiles} showAvatar={true} showLinkedIn={true} />
                        </CardHeader>
                        <CardContent>
                          <CardDescription className="text-lg leading-relaxed">

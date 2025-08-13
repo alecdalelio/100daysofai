@@ -166,6 +166,10 @@ export default function Account() {
         display_name: row.display_name ?? null,
         avatar_gradient: row.avatar_gradient ?? null,
         time_zone: row.time_zone ?? null,
+        linkedin_profile_url: row.linkedin_profile_url ?? null,
+        linkedin_headline: row.linkedin_headline ?? null,
+        linkedin_company: row.linkedin_company ?? null,
+        linkedin_id: row.linkedin_id ?? null,
       })
       
       // Notify useProfile hook that data was saved (this will trigger a fresh fetch)
@@ -313,6 +317,42 @@ export default function Account() {
             </div>
           )}
         </div>
+
+        {/* LinkedIn Profile Information */}
+        {(profile?.linkedin_profile_url || profile?.linkedin_headline || profile?.linkedin_company) && (
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-medium mb-3">LinkedIn Profile</h3>
+            <div className="space-y-2 text-sm">
+              {profile.linkedin_headline && (
+                <div>
+                  <span className="font-medium">Headline:</span> {profile.linkedin_headline}
+                </div>
+              )}
+              {profile.linkedin_company && (
+                <div>
+                  <span className="font-medium">Company:</span> {profile.linkedin_company}
+                </div>
+              )}
+              {profile.linkedin_profile_url && (
+                <div>
+                  <span className="font-medium">Profile:</span>{' '}
+                  <a 
+                    href={profile.linkedin_profile_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-[#0077B5] hover:underline"
+                  >
+                    View LinkedIn Profile
+                  </a>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              LinkedIn information is automatically imported when you sign in with LinkedIn.
+            </p>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={onSave}

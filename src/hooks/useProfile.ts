@@ -8,6 +8,10 @@ export type ProfileRow = {
   display_name: string | null
   avatar_gradient: string | null
   time_zone?: string | null
+  linkedin_profile_url?: string | null
+  linkedin_headline?: string | null
+  linkedin_company?: string | null
+  linkedin_id?: string | null
 }
 
 const projectRef = new URL(import.meta.env.VITE_SUPABASE_URL).host.split('.')[0]
@@ -36,6 +40,10 @@ function normalize(row: any, session?: any) {
     display_name,
     avatar_gradient: row.avatar_gradient ?? row.avatar_url ?? null,
     time_zone: row.time_zone ?? null,
+    linkedin_profile_url: row.linkedin_profile_url ?? null,
+    linkedin_headline: row.linkedin_headline ?? null,
+    linkedin_company: row.linkedin_company ?? null,
+    linkedin_id: row.linkedin_id ?? null,
   }
 }
 
@@ -80,7 +88,7 @@ export function useProfile() {
       // Fetch fresh data from database first
       const { data: row, error: err } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, time_zone')
+        .select('id, username, display_name, avatar_url, time_zone, linkedin_profile_url, linkedin_headline, linkedin_company, linkedin_id')
         .eq('id', uid)
         .maybeSingle()
 
@@ -179,7 +187,7 @@ export function useProfile() {
   return { profile: visible, isLoading, error, refresh: fetchProfile }
 }
 
-type PartialProfile = { username?: string; display_name?: string; avatar_gradient?: string; time_zone?: string }
+type PartialProfile = { username?: string; display_name?: string; avatar_gradient?: string; time_zone?: string; linkedin_profile_url?: string; linkedin_headline?: string; linkedin_company?: string; linkedin_id?: string }
 type UpdateOpts = { token?: string; userId?: string }
 
 export async function updateProfile(partial: PartialProfile, opts: UpdateOpts = {}) {
@@ -254,6 +262,10 @@ export async function updateProfile(partial: PartialProfile, opts: UpdateOpts = 
       display_name: row.display_name ?? null,
       avatar_gradient: row.avatar_gradient ?? row.avatar_url ?? null,
       time_zone: row.time_zone ?? 'UTC',
+      linkedin_profile_url: row.linkedin_profile_url ?? null,
+      linkedin_headline: row.linkedin_headline ?? null,
+      linkedin_company: row.linkedin_company ?? null,
+      linkedin_id: row.linkedin_id ?? null,
     } as ProfileRow
   } finally {
     clearTimeout(timeoutId)

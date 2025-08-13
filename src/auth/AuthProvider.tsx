@@ -23,13 +23,17 @@ function normalize(row: any): CachedProfile {
     display_name: row.display_name ?? row.displayName ?? null,
     avatar_gradient: row.avatar_gradient ?? row.avatar_url ?? null,
     time_zone: row.time_zone ?? null,
+    linkedin_profile_url: row.linkedin_profile_url ?? null,
+    linkedin_headline: row.linkedin_headline ?? null,
+    linkedin_company: row.linkedin_company ?? null,
+    linkedin_id: row.linkedin_id ?? null,
   }
 }
 
 async function fetchProfileAndWarm(uid: string) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, username, display_name, avatar_gradient, avatar_url, time_zone')
+    .select('id, username, display_name, avatar_gradient, avatar_url, time_zone, linkedin_profile_url, linkedin_headline, linkedin_company, linkedin_id')
     .eq('id', uid)
     .maybeSingle()
   if (!error && data) writeLastProfile(normalize(data))
@@ -47,6 +51,10 @@ function warmFromSession(sess: Session | null) {
     display_name: null,
     avatar_gradient: 'grad-1',
     time_zone: null,
+    linkedin_profile_url: (u.user_metadata as any)?.linkedin_profile_url ?? null,
+    linkedin_headline: (u.user_metadata as any)?.linkedin_headline ?? null,
+    linkedin_company: (u.user_metadata as any)?.linkedin_company ?? null,
+    linkedin_id: (u.user_metadata as any)?.linkedin_id ?? null,
   }
   writeLastProfile(fallback)
 }

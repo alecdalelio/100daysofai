@@ -4,6 +4,12 @@ export interface Profile {
   username: string | null
   display_name: string | null
   avatar_url: string | null
+  avatar_gradient?: string | null
+  time_zone?: string | null
+  linkedin_profile_url?: string | null
+  linkedin_headline?: string | null
+  linkedin_company?: string | null
+  linkedin_id?: string | null
   created_at: string
   updated_at: string
 }
@@ -22,6 +28,9 @@ export interface LogEntry {
     username: string | null
     display_name: string | null
     avatar_gradient?: string | null
+    linkedin_profile_url?: string | null
+    linkedin_headline?: string | null
+    linkedin_company?: string | null
   }
 }
 

@@ -12,6 +12,9 @@ export default function Login() {
         <button className="w-full border rounded p-2" onClick={() => signInWithProvider('github')}>
           Continue with GitHub
         </button>
+        <button className="w-full border rounded p-2 bg-[#0077B5] text-white hover:bg-[#005582] transition-colors" onClick={() => signInWithProvider('linkedin_oidc')}>
+          Continue with LinkedIn
+        </button>
       </div>
     </div>
   )

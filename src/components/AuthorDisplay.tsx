@@ -6,17 +6,22 @@ interface AuthorDisplayProps {
     username: string | null
     display_name: string | null
     avatar_gradient?: string | null
+    linkedin_profile_url?: string | null
+    linkedin_headline?: string | null
+    linkedin_company?: string | null
   } | null
   className?: string
   showAvatar?: boolean
   avatarSize?: 'sm' | 'md'
+  showLinkedIn?: boolean
 }
 
 export function AuthorDisplay({ 
   profile, 
   className = "", 
   showAvatar = false, 
-  avatarSize = 'sm' 
+  avatarSize = 'sm',
+  showLinkedIn = false 
 }: AuthorDisplayProps) {
   const getAuthorName = () => {
     if (profile?.display_name) {
@@ -56,18 +61,40 @@ export function AuthorDisplay({
     }
   }
 
+  const renderLinkedInInfo = () => {
+    if (!showLinkedIn || !profile) return null
+    
+    const hasLinkedInInfo = profile.linkedin_headline || profile.linkedin_company
+    if (!hasLinkedInInfo) return null
+    
+    return (
+      <div className="text-xs text-muted-foreground/70 mt-1">
+        {profile.linkedin_headline && (
+          <div>{profile.linkedin_headline}</div>
+        )}
+        {profile.linkedin_company && (
+          <div>at {profile.linkedin_company}</div>
+        )}
+      </div>
+    )
+  }
+
   if (showAvatar) {
     return (
-      <div className={`flex items-center gap-2 text-sm text-muted-foreground ${className}`}>
-        {renderAvatar()}
-        <span>By {getAuthorName()}</span>
+      <div className={`text-sm text-muted-foreground ${className}`}>
+        <div className="flex items-center gap-2">
+          {renderAvatar()}
+          <span>By {getAuthorName()}</span>
+        </div>
+        {renderLinkedInInfo()}
       </div>
     )
   }
 
   return (
-    <span className={`text-sm text-muted-foreground ${className}`}>
-      By {getAuthorName()}
-    </span>
+    <div className={`text-sm text-muted-foreground ${className}`}>
+      <span>By {getAuthorName()}</span>
+      {renderLinkedInInfo()}
+    </div>
   )
 }

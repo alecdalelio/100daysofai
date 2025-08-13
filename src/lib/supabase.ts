@@ -96,11 +96,12 @@ export const signInWithEmail = (email: string, password: string) =>
 export const signUpWithEmail = (email: string, password: string) =>
   supabase.auth.signUp({ email, password })
 
-export const signInWithProvider = (provider: 'google' | 'github') =>
+export const signInWithProvider = (provider: 'google' | 'github' | 'linkedin_oidc') =>
   supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: window.location.origin,
+      scopes: provider === 'linkedin_oidc' ? 'openid profile email' : undefined,
     },
   })
 
