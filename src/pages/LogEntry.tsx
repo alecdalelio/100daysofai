@@ -11,6 +11,7 @@ import { AuthorDisplay } from "@/components/AuthorDisplay";
 import { useAuth } from "@/auth/AuthProvider";
 import { LogEntry as LogEntryType } from "@/lib/types";
 import { fetchSingleLogWithProfile } from "@/lib/fetchLogsWithProfiles";
+import { ShareLogEntryButton } from "@/components/LinkedInShareButton";
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -204,11 +205,20 @@ const LogEntry = () => {
                   </div>
                   
                   <div className="flex items-center gap-2">
+                    {entry.is_published && (
+                      <ShareLogEntryButton 
+                        entry={entry} 
+                        size="sm"
+                        variant="ghost"
+                        className="hover-lift"
+                      />
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={handleShare}
                       className="h-8 w-8 p-0 hover-lift"
+                      title="Copy link"
                     >
                       <Share2 className="w-4 h-4" />
                     </Button>
@@ -216,6 +226,7 @@ const LogEntry = () => {
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0 hover-lift"
+                      title="Open in new tab"
                     >
                       <ExternalLink className="w-4 h-4" />
                     </Button>

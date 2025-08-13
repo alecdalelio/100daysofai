@@ -22,6 +22,7 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import { RouteProgressBar } from "./components/ui/RouteLoader";
 import { useRouteLoading } from "./hooks/useRouteLoading";
+import { MilestoneCelebration } from "./components/MilestoneCelebration";
 
 function RouteLoadersMount() {
   const busy = useRouteLoading(500, 200)
@@ -45,6 +46,7 @@ const App = () => (
             {/* Route-level loader inside Router context */}
             <RouteLoadersMount />
             <Header />
+            <MilestoneCelebration />
             <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />

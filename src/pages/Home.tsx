@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { LogEntry } from "@/lib/types";
 import { useProgress } from "@/hooks/useProgress";
 import { fetchLogsWithProfiles } from "@/lib/fetchLogsWithProfiles";
+import { ShareLogEntryButton } from "@/components/LinkedInShareButton";
 
 type HomeLogEntry = {
   id: string
@@ -150,9 +151,22 @@ const Home = () => {
                           <AuthorDisplay profile={entry.profiles} showAvatar={true} showLinkedIn={true} />
                        </CardHeader>
                        <CardContent>
-                         <CardDescription className="text-lg leading-relaxed">
+                         <CardDescription className="text-lg leading-relaxed mb-4">
                            {entry.summary}
                          </CardDescription>
+                         <div className="flex justify-between items-center">
+                           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                             <ShareLogEntryButton 
+                               entry={entry} 
+                               size="sm"
+                               variant="outline"
+                               className="mr-2"
+                             />
+                           </div>
+                           <span className="text-sm text-muted-foreground">
+                             Click to read more →
+                           </span>
+                         </div>
                        </CardContent>
                      </Card>
                    </Link>
