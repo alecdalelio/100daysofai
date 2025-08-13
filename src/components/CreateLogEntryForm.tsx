@@ -11,6 +11,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { nextEligiblePublish } from '@/lib/eligibility';
 import { useAuth } from '@/auth/AuthProvider';
 import { useNavigate } from 'react-router-dom';
+import LogComposer from './LogComposer';
 
 type NewLog = {
   day: number;
@@ -18,6 +19,10 @@ type NewLog = {
   summary: string;
   content: string;
   is_published: boolean;
+  tags?: string[];
+  tools?: string[];
+  minutes?: number;
+  mood?: string;
 };
 
 async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
@@ -80,6 +85,10 @@ async function createLogEntry(input: NewLog, opts?: { userId?: string }) {
       summary: input.summary?.trim() || null,
       content: input.content?.trim() || null,
       is_published: !!input.is_published,
+      tags: input.tags || [],
+      tools: input.tools || [],
+      minutes_spent: input.minutes || null,
+      mood: input.mood || null,
     };
 
     console.log('[DEBUG] Payload to be sent:', payload);
@@ -169,6 +178,7 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [publishDisabled, setPublishDisabled] = useState<boolean>(false);
   const [nextEligibleText, setNextEligibleText] = useState<string | null>(null);
+  const [useAIComposer, setUseAIComposer] = useState(false);
 
   const handleInputChange = (field: keyof NewLog, value: string | number | boolean) => {
     setFormData(prev => ({
@@ -291,115 +301,167 @@ const CreateLogEntryForm = ({ onSuccess, onError }: CreateLogEntryFormProps) => 
       </CardHeader>
       
       <CardContent>
-        <form onSubmit={onSubmit} className="space-y-6">
-          {/* Day Number */}
-          <div className="space-y-2">
-            <Label htmlFor="day" className="text-sm font-medium">
-              Day Number
-            </Label>
-            <Input
-              id="day"
-              type="number"
-              min="1"
-              max="100"
-              value={formData.day}
-              onChange={(e) => handleInputChange('day', parseInt(e.target.value) || 1)}
-              className="glow-primary focus:glow-electric transition-all duration-300"
-              required
-            />
-          </div>
-
-          {/* Title */}
-          <div className="space-y-2">
-            <Label htmlFor="title" className="text-sm font-medium">
-              Title
-            </Label>
-            <Input
-              id="title"
-              type="text"
-              value={formData.title}
-              onChange={(e) => handleInputChange('title', e.target.value)}
-              placeholder="What did you learn today?"
-              className="glow-primary focus:glow-electric transition-all duration-300"
-              required
-            />
-          </div>
-
-          {/* Summary */}
-          <div className="space-y-2">
-            <Label htmlFor="summary" className="text-sm font-medium">
-              Summary
-            </Label>
-            <Input
-              id="summary"
-              type="text"
-              value={formData.summary}
-              onChange={(e) => handleInputChange('summary', e.target.value)}
-              placeholder="Brief summary of today's learning"
-              className="glow-primary focus:glow-electric transition-all duration-300"
-              required
-            />
-          </div>
-
-          {/* Content */}
-          <div className="space-y-2">
-            <Label htmlFor="content" className="text-sm font-medium">
-              Content
-            </Label>
-            <Textarea
-              id="content"
-              value={formData.content}
-              onChange={(e) => handleInputChange('content', e.target.value)}
-              placeholder="Detailed content of your learning experience..."
-              rows={8}
-              className="glow-primary focus:glow-electric transition-all duration-300 resize-none"
-              required
-            />
-          </div>
-
-          {/* Published Toggle */}
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="is_published"
-              checked={formData.is_published && !publishDisabled}
-              onCheckedChange={(checked) => !publishDisabled && handleInputChange('is_published', checked)}
-              disabled={publishDisabled}
-            />
-            <Label htmlFor="is_published" className="text-sm font-medium">
-              Publish Entry
-            </Label>
-            {formData.is_published && (
-              <Badge variant="secondary" className="ml-2">
-                Public
-              </Badge>
-            )}
-            {publishDisabled && nextEligibleText && (
-              <span className="text-sm text-muted-foreground ml-2">{nextEligibleText}</span>
-            )}
-          </div>
-
-          {/* Error/Success Messages */}
-          {errorMsg && (
-            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md p-3">
-              <p className="text-red-700 dark:text-red-300 text-sm">{errorMsg}</p>
-            </div>
-          )}
-          {okMsg && (
-            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md p-3">
-              <p className="text-green-700 dark:text-green-300 text-sm">{okMsg}</p>
-            </div>
-          )}
-
-          {/* Submit Button */}
+        {/* Toggle between AI Composer and Basic Form */}
+        <div className="flex gap-2 mb-6">
           <Button
-            type="submit"
-            disabled={submitting}
-            className="w-full glow-primary hover:glow-electric transition-all duration-300 hover-lift"
-            size="lg"
+            variant={useAIComposer ? "outline" : "default"}
+            onClick={() => setUseAIComposer(false)}
+            className="flex-1"
           >
-            {submitting ? 'Creating Entry…' : 'Create Log Entry'}
+            Basic Form
           </Button>
-        </form>
+          <Button
+            variant={useAIComposer ? "default" : "outline"}
+            onClick={() => setUseAIComposer(true)}
+            className="flex-1"
+          >
+            AI-Assist Composer
+          </Button>
+        </div>
+
+        {useAIComposer ? (
+          <LogComposer
+            onSave={async (payload) => {
+              setSubmitting(true);
+              setErrorMsg(null);
+              setOkMsg(null);
+              try {
+                const res = await createLogEntry(payload, { userId: userId ?? undefined });
+                console.log('[Log] created', res);
+                window.dispatchEvent(new CustomEvent('log:changed', { detail: { id: res.id } }));
+                setOkMsg('Entry created!');
+                onSuccess?.();
+                navigate(`/log/${res.id}`);
+              } catch (err: unknown) {
+                console.error('[Log] create error', err);
+                const code = (err as any)?.code as string | undefined;
+                if (code === '23505') {
+                  const tz = profile?.time_zone || 'UTC';
+                  const { pretty } = nextEligiblePublish(tz);
+                  const message = `You've already published for today. Next eligible: ${pretty}.`;
+                  setErrorMsg(message);
+                  onError?.(message);
+                  return;
+                }
+                const message = (err as { message?: string } | null)?.message || 'Could not create entry';
+                setErrorMsg(message);
+                onError?.(message);
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          />
+        ) : (
+          <form onSubmit={onSubmit} className="space-y-6">
+            {/* Day Number */}
+            <div className="space-y-2">
+              <Label htmlFor="day" className="text-sm font-medium">
+                Day Number
+              </Label>
+              <Input
+                id="day"
+                type="number"
+                min="1"
+                max="100"
+                value={formData.day}
+                onChange={(e) => handleInputChange('day', parseInt(e.target.value) || 1)}
+                className="glow-primary focus:glow-electric transition-all duration-300"
+                required
+              />
+            </div>
+
+            {/* Title */}
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-sm font-medium">
+                Title
+              </Label>
+              <Input
+                id="title"
+                type="text"
+                value={formData.title}
+                onChange={(e) => handleInputChange('title', e.target.value)}
+                placeholder="What did you learn today?"
+                className="glow-primary focus:glow-electric transition-all duration-300"
+                required
+              />
+            </div>
+
+            {/* Summary */}
+            <div className="space-y-2">
+              <Label htmlFor="summary" className="text-sm font-medium">
+                Summary
+              </Label>
+              <Input
+                id="summary"
+                type="text"
+                value={formData.summary}
+                onChange={(e) => handleInputChange('summary', e.target.value)}
+                placeholder="Brief summary of today's learning"
+                className="glow-primary focus:glow-electric transition-all duration-300"
+                required
+              />
+            </div>
+
+            {/* Content */}
+            <div className="space-y-2">
+              <Label htmlFor="content" className="text-sm font-medium">
+                Content
+              </Label>
+              <Textarea
+                id="content"
+                value={formData.content}
+                onChange={(e) => handleInputChange('content', e.target.value)}
+                placeholder="Detailed content of your learning experience..."
+                rows={8}
+                className="glow-primary focus:glow-electric transition-all duration-300 resize-none"
+                required
+              />
+            </div>
+
+            {/* Published Toggle */}
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="is_published"
+                checked={formData.is_published && !publishDisabled}
+                onCheckedChange={(checked) => !publishDisabled && handleInputChange('is_published', checked)}
+                disabled={publishDisabled}
+              />
+              <Label htmlFor="is_published" className="text-sm font-medium">
+                Publish Entry
+              </Label>
+              {formData.is_published && (
+                <Badge variant="secondary" className="ml-2">
+                  Public
+                </Badge>
+              )}
+              {publishDisabled && nextEligibleText && (
+                <span className="text-sm text-muted-foreground ml-2">{nextEligibleText}</span>
+              )}
+            </div>
+
+            {/* Error/Success Messages */}
+            {errorMsg && (
+              <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md p-3">
+                <p className="text-red-700 dark:text-red-300 text-sm">{errorMsg}</p>
+              </div>
+            )}
+            {okMsg && (
+              <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md p-3">
+                <p className="text-green-700 dark:text-green-300 text-sm">{okMsg}</p>
+              </div>
+            )}
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="w-full glow-primary hover:glow-electric transition-all duration-300 hover-lift"
+              size="lg"
+            >
+              {submitting ? 'Creating Entry…' : 'Create Log Entry'}
+            </Button>
+          </form>
+        )}
       </CardContent>
     </Card>
   );
