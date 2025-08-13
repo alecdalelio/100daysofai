@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowRight, Calendar, Code2, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, Calendar, Code2, Sparkles, Zap, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import FloatingCounter from "@/components/ui/floating-counter";
 import { AuthorDisplay } from "@/components/AuthorDisplay";
@@ -76,19 +76,17 @@ const Home = () => {
             </h1>
             
             <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-3xl mx-auto fade-in-up leading-relaxed">
-              A public learning sprint where I deepen my skills in <span className="text-electric font-semibold">AI-native tools</span>, 
-              <span className="text-cyber font-semibold"> Python automation</span>, 
-              and the art of building with artificial intelligence as a creative partner.
+              Join others in a 100-day challenge to learn, create, and share with AI. Follow daily logs, get inspired by the community, and contribute your own progress.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-6 justify-center fade-in-up">
               <Button asChild size="lg" className="glow-primary hover-lift text-lg px-8 py-4">
-                <Link to="/log">
-                  View Daily Log <ArrowRight className="w-5 h-5 ml-3" />
+                <Link to="/new-log">
+                  Create Daily Log <Plus className="w-5 h-5 ml-3" />
                 </Link>
               </Button>
               <Button asChild variant="outline" size="lg" className="hover-lift text-lg px-8 py-4">
-                <Link to="/about">Learn About Me</Link>
+                <Link to="/log">View All Logs</Link>
               </Button>
             </div>
           </div>
