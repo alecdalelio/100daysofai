@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, ArrowLeft, Share2, ExternalLink, Trash2 } from "lucide-react";
+import { Calendar, ArrowLeft, Trash2 } from "lucide-react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
@@ -89,11 +89,7 @@ const LogEntry = () => {
     }
   }
 
-  const handleShare = () => {
-    const url = `${window.location.origin}/log/${id}`;
-    navigator.clipboard.writeText(url);
-    // You could show a toast here
-  };
+
 
   if (loading) {
     return (
@@ -213,23 +209,7 @@ const LogEntry = () => {
                         className="hover-lift"
                       />
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleShare}
-                      className="h-8 w-8 p-0 hover-lift"
-                      title="Copy link"
-                    >
-                      <Share2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 hover-lift"
-                      title="Open in new tab"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
+
                     {isOwner && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
