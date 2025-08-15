@@ -75,8 +75,9 @@ const Home = () => {
               <span className="gradient-text-electric block">#100DaysOfAI</span>
             </h1>
             
-            <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-3xl mx-auto fade-in-up leading-relaxed">
-              Join others in a 100-day challenge to learn, create, and share with AI. Follow daily logs, get inspired by the community, and contribute your own progress.
+            <p className="text-xl md:text-2xl mb-12 max-w-3xl mx-auto fade-in-up leading-relaxed">
+              <span className="text-purple-400">AI moves fast</span><span className="text-muted-foreground">, but so can you!</span><br />
+              <span className="text-muted-foreground">Join for </span><span className="text-cyan-400">100 days</span><span className="text-muted-foreground"> of learning, creating, and </span><span className="text-purple-400">building in public</span><span className="text-muted-foreground">.</span>
             </p>
             
             <div className="flex flex-col sm:flex-row gap-6 justify-center fade-in-up">
@@ -203,53 +204,7 @@ const Home = () => {
           </div>
         </section>
 
-        {/* What I'm Building */}
-        <section className="px-6 py-20 relative">
-          <div className="max-w-5xl mx-auto">
-            <div className="flex items-center gap-4 mb-12">
-              <Code2 className="w-8 h-8 text-cyber" />
-              <h2 className="gradient-text-electric">What I'm Building</h2>
-            </div>
-            
-            <div className="grid md:grid-cols-2 gap-8">
-              <Card className="glow-primary hover:glow-cyber transition-all duration-500 hover-lift group">
-                <CardHeader className="pb-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 rounded-xl bg-cyber/10 group-hover:bg-cyber/20 transition-colors">
-                      <Sparkles className="w-6 h-6 text-cyber" />
-                    </div>
-                    <CardTitle className="text-xl">AI-Native Tools</CardTitle>
-                  </div>
-                  <CardDescription className="text-base leading-relaxed">
-                    Exploring the next generation of software that puts AI at the center of the development process
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-              
-              <Card className="glow-primary hover:glow-electric transition-all duration-500 hover-lift group">
-                <CardHeader className="pb-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-3 rounded-xl bg-electric/10 group-hover:bg-electric/20 transition-colors">
-                      <Zap className="w-6 h-6 text-electric" />
-                    </div>
-                    <CardTitle className="text-xl">Python Automation</CardTitle>
-                  </div>
-                  <CardDescription className="text-base leading-relaxed">
-                    Building intelligent workflows that bridge AI capabilities with real-world tasks and systems
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            </div>
-            
-            <div className="text-center mt-12">
-              <Button asChild variant="outline" size="lg" className="hover-lift">
-                <Link to="/projects">
-                  Explore Projects <ArrowRight className="w-5 h-5 ml-3" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
+
       </div>
     </>
   );
