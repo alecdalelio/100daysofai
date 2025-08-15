@@ -69,7 +69,13 @@ export default function Header() {
   return (
     <header className="w-full sticky top-0 z-40 bg-white/80 dark:bg-black/70 backdrop-blur border-b border-gray-200 dark:border-white/10">
       <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
-        <Link to="/" className="font-semibold">100 Days</Link>
+        <Link to="/" className="flex items-center">
+          <img 
+            src="/logo.png" 
+            alt="100 Days of AI" 
+            className="h-12 w-auto"
+          />
+        </Link>
         <nav className="flex items-center gap-4">
           <Link to="/log">Explore</Link>
           {userId ? (
