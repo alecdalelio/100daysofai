@@ -8,11 +8,26 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Loader2, Send, Mic, MicOff, Bot, User, Sparkles, Check, RotateCcw, MessageSquare } from 'lucide-react'
 import { VoiceInput } from '@/components/VoiceInput'
+import { useProgress } from '@/hooks/useProgress'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+}
+
+interface ApiResponse {
+  thread_id?: string
+  message?: string
+  generated_log?: {
+    title: string
+    summary: string
+    content: string
+    tags: string[]
+    tools: string[]
+    minutes: number
+    mood: string
+  }
 }
 
 interface LogComposerProps {
@@ -32,6 +47,9 @@ interface LogComposerProps {
 
 export default function LogComposer({ initial = '', onSave }: LogComposerProps) {
   const { session } = useAuth()
+  const { day: currentDay } = useProgress({ countDrafts: true })
+  const nextDay = currentDay + 1
+  
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -50,6 +68,7 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
   const [error, setError] = useState<string | null>(null)
   const [isPublishing, setIsPublishing] = useState(false)
   const [chatComplete, setChatComplete] = useState(false)
+  const [retryMessage, setRetryMessage] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -72,17 +91,18 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
 
       const result = await callEdgeFunction('conversational_log_composer', {
         body: { action: 'create_thread' }
-      })
+      }) as ApiResponse
 
-      setThreadId(result.thread_id)
+      setThreadId(result.thread_id!)
       setMessages([{
         role: 'assistant',
-        content: result.message,
+        content: result.message!,
         timestamp: new Date()
       }])
     } catch (error) {
       console.error('Failed to initialize conversation:', error)
-      setError('Failed to start conversation. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      setError(`Failed to start conversation: ${errorMessage}. Please refresh the page or try again later.`)
     } finally {
       setIsLoading(false)
     }
@@ -106,13 +126,21 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
           conversation_history: conversationHistory
         },
         timeoutMs: 45000
-      })
+      }) as ApiResponse
 
-      setGeneratedLog(result.generated_log)
+      setGeneratedLog(result.generated_log!)
       setShowGeneratedLog(true)
     } catch (error) {
       console.error('Failed to generate log:', error)
-      setError('Failed to generate your log entry. Please continue the conversation.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      
+      if (errorMessage.includes('JSON')) {
+        setError('Failed to generate log entry due to formatting issue. Please try again or continue the conversation.')
+      } else if (errorMessage.includes('timeout')) {
+        setError('Request timed out while generating log. Please try again.')
+      } else {
+        setError(`Failed to generate your log entry: ${errorMessage}. Please continue the conversation or try again.`)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -134,6 +162,8 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
     setError(null)
 
     try {
+      console.log('[LogComposer] Sending message:', content.trim())
+      
       // Get the updated messages array including the new user message
       const updatedMessages = [...messages, userMessage]
       
@@ -143,6 +173,8 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
         content: m.content
       }))
 
+      console.log('[LogComposer] Calling edge function with history length:', conversationHistory.length)
+      
       const result = await callEdgeFunction('conversational_log_composer', {
         body: {
           action: 'send_message',
@@ -151,11 +183,13 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
           conversation_history: conversationHistory
         },
         timeoutMs: 45000
-      })
+      }) as ApiResponse
 
+      console.log('[LogComposer] Received response:', result.message?.substring(0, 100) + '...')
+      
       const assistantMessage: Message = {
         role: 'assistant',
-        content: result.message,
+        content: result.message!,
         timestamp: new Date()
       }
 
@@ -163,10 +197,10 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
 
       // Check if the assistant suggests generating a log
       // Only trigger if the AI explicitly says it has enough information
-      if (result.message.toLowerCase().includes('enough information') || 
-          result.message.toLowerCase().includes('ready to create') ||
-          result.message.toLowerCase().includes('let me generate') ||
-          result.message.toLowerCase().includes('create your log')) {
+      if (result.message!.toLowerCase().includes('enough information') || 
+          result.message!.toLowerCase().includes('ready to create') ||
+          result.message!.toLowerCase().includes('let me generate') ||
+          result.message!.toLowerCase().includes('create your log')) {
         setChatComplete(true)
         setTimeout(() => {
           generateLogEntry()
@@ -174,7 +208,21 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
       }
     } catch (error) {
       console.error('Failed to send message:', error)
-      setError('Failed to send message. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      
+      if (errorMessage.includes('timeout')) {
+        setError('Request timed out. The AI service may be slow. Please try again.')
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        setError('Network error. Please check your connection and try again.')
+      } else {
+        setError(`Failed to send message: ${errorMessage}. Please try again.`)
+      }
+      
+      // Remove the user message that was added optimistically if the request failed
+      setMessages(prev => prev.slice(0, -1))
+      
+      // Store the message for retry
+      setRetryMessage(content.trim())
     } finally {
       setIsLoading(false)
     }
@@ -211,7 +259,7 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
     try {
       setIsPublishing(true)
       await onSave({
-        day: 1, // This would be determined by the user or system
+        day: nextDay,
         title: generatedLog.title,
         summary: generatedLog.summary,
         content: generatedLog.content,
@@ -227,12 +275,35 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
     } finally {
       setIsPublishing(false)
     }
-  }, [generatedLog, onSave])
+  }, [generatedLog, onSave, nextDay])
+
+  const handleApproveAndPublish = useCallback(async () => {
+    if (!generatedLog) return
+
+    try {
+      setIsPublishing(true)
+      await onSave({
+        day: nextDay,
+        title: generatedLog.title,
+        summary: generatedLog.summary,
+        content: generatedLog.content,
+        is_published: true,
+        tags: generatedLog.tags,
+        tools: generatedLog.tools,
+        minutes: generatedLog.minutes,
+        mood: generatedLog.mood
+      })
+    } catch (error) {
+      console.error('Failed to save log:', error)
+      setError('Failed to save your log entry. Please try again.')
+    } finally {
+      setIsPublishing(false)
+    }
+  }, [generatedLog, onSave, nextDay])
 
   const handleContinueChat = useCallback(() => {
     setShowGeneratedLog(false)
     setChatComplete(false)
-    setGeneratedLog(null)
   }, [])
 
   const handleStartOver = useCallback(() => {
@@ -252,11 +323,23 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="w-5 h-5" />
-            Generated Log Entry
+            Day {nextDay} Log Entry Ready
           </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Review and edit your log entry, then approve to publish or continue chatting to refine it.
+          </p>
         </CardHeader>
         
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Day</label>
+            <Input 
+              value={nextDay} 
+              disabled
+              className="border-white/10 bg-muted/50"
+            />
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium">Title</label>
             <Input 
@@ -285,39 +368,47 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
             />
           </div>
 
-          <div className="flex gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Button
               onClick={handleContinueChat}
               variant="outline"
-              className="flex-1"
+              className="w-full"
             >
               <MessageSquare className="w-4 h-4 mr-2" />
-              Continue Chat
+              Keep Chatting
             </Button>
             <Button
               onClick={handleStartOver}
               variant="outline"
-              className="flex-1"
+              className="w-full"
             >
               <RotateCcw className="w-4 h-4 mr-2" />
-              Start Over
+              Reset Chat
             </Button>
             <Button
               onClick={handleSaveLog}
               disabled={isPublishing}
-              className="flex-1"
+              variant="secondary"
+              className="w-full"
             >
               {isPublishing ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Save Log
-                </>
+                <Check className="w-4 h-4 mr-2" />
               )}
+              Save Draft
+            </Button>
+            <Button
+              onClick={handleApproveAndPublish}
+              disabled={isPublishing}
+              className="w-full"
+            >
+              {isPublishing ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 mr-2" />
+              )}
+              Approve & Publish
             </Button>
           </div>
         </CardContent>
@@ -331,7 +422,7 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bot className="w-5 h-5" />
-          AI Log Assistant
+          AI Log Assistant - Day {nextDay}
         </CardTitle>
       </CardHeader>
 
@@ -384,7 +475,24 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
         {/* Error */}
         {error && (
           <div className="text-red-400 text-sm p-3 bg-red-950/20 border border-red-500/20 rounded-lg">
-            {error}
+            <div className="flex items-center justify-between">
+              <span>{error}</span>
+              {retryMessage && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setError(null)
+                    const messageToRetry = retryMessage
+                    setRetryMessage(null)
+                    sendMessage(messageToRetry)
+                  }}
+                  className="ml-2 h-8 px-3"
+                >
+                  Retry
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
@@ -395,6 +503,23 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
               <Loader2 className="w-4 h-4 animate-spin" />
               Generating your log entry...
             </div>
+          </div>
+        )}
+
+        {/* Manual Generate Button - Show after several messages */}
+        {messages.length >= 4 && !chatComplete && !showGeneratedLog && (
+          <div className="flex justify-center mb-4">
+            <Button
+              onClick={() => {
+                setChatComplete(true)
+                generateLogEntry()
+              }}
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              Generate Log Entry Now
+            </Button>
           </div>
         )}
 

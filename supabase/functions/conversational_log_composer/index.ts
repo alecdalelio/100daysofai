@@ -59,6 +59,35 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+function extractJsonFromMarkdown(text: string): string {
+  console.log('[extractJsonFromMarkdown] Input text:', text.substring(0, 200) + '...')
+  
+  let cleanedText = text.trim()
+  
+  // Remove any markdown code block formatting
+  // Handle multiple formats: ```json, ```, ``` json, etc.
+  cleanedText = cleanedText.replace(/^```(?:json)?\s*/i, '')
+  cleanedText = cleanedText.replace(/\s*```$/, '')
+  
+  // Remove any remaining backticks at start/end
+  cleanedText = cleanedText.replace(/^`+/, '')
+  cleanedText = cleanedText.replace(/`+$/, '')
+  
+  // Find the first { and last } to extract just the JSON object
+  const firstBrace = cleanedText.indexOf('{')
+  const lastBrace = cleanedText.lastIndexOf('}')
+  
+  if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
+    cleanedText = cleanedText.substring(firstBrace, lastBrace + 1)
+  }
+  
+  // Final cleanup - remove any non-JSON text before/after
+  cleanedText = cleanedText.trim()
+  
+  console.log('[extractJsonFromMarkdown] Cleaned text:', cleanedText.substring(0, 200) + '...')
+  return cleanedText
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -133,28 +162,64 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
       ]
 
-      // Generate response using Chat Completions
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages,
-          temperature: 0.8, // Slightly higher for more varied responses
-          max_tokens: 200
+      console.log(`[send_message] Generating response for user ${user.id}, messages count: ${messages.length}`)
+      
+      // Generate response using Chat Completions with timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+      
+      let assistantMessage: string
+      
+      try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            messages,
+            temperature: 0.8, // Slightly higher for more varied responses
+            max_tokens: 200
+          }),
+          signal: controller.signal
         })
-      })
+        
+        clearTimeout(timeoutId)
 
-      if (!response.ok) {
-        throw new Error(`Failed to generate response: ${response.statusText}`)
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error(`OpenAI API error: ${response.status} ${response.statusText}`, errorText)
+          throw new Error(`Failed to generate response: ${response.statusText}`)
+        }
+
+        const responseData = await response.json()
+        console.log(`[send_message] OpenAI response received successfully`)
+        
+        if (!responseData.choices || !responseData.choices[0] || !responseData.choices[0].message) {
+          console.error('Invalid OpenAI response structure:', responseData)
+          throw new Error('Invalid response from OpenAI')
+        }
+        
+        assistantMessage = responseData.choices[0].message.content
+        
+        if (!assistantMessage) {
+          console.error('Empty message from OpenAI')
+          throw new Error('Empty response from OpenAI')
+        }
+        
+      } catch (error) {
+        clearTimeout(timeoutId)
+        if (error.name === 'AbortError') {
+          console.error('OpenAI request timeout')
+          throw new Error('Request timeout - please try again')
+        }
+        throw error
       }
 
-      const { choices } = await response.json()
-      const assistantMessage = choices[0].message.content
-
+      console.log(`[send_message] Returning response: ${assistantMessage.substring(0, 100)}...`)
+      
       return new Response(JSON.stringify({
         message: assistantMessage
       }), {
@@ -187,25 +252,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
           messages: [
             {
               role: 'system',
-              content: `You are an expert at creating engaging daily log entries for #100DaysOfAI journeys. Based on the conversation, create a structured log entry with:
+              content: `You are an expert at creating engaging daily log entries for #100DaysOfAI journeys. Based on the conversation, create a structured log entry.
 
-1. A compelling title (max 60 chars)
-2. A concise summary (1-2 sentences)
-3. Detailed content that expands naturally on the conversation
-4. Relevant tags (array of strings)
-5. Tools/technologies mentioned (array of strings)
-6. Estimated time spent in minutes
-7. Mood emoji based on the conversation tone
+CRITICAL INSTRUCTIONS:
+- Return ONLY valid JSON
+- NO markdown code blocks (no \`\`\`)
+- NO explanatory text before or after
+- NO backticks anywhere
+- Start directly with { and end with }
 
-Return as JSON:
+Required fields:
+1. title: Compelling title (max 60 chars)
+2. summary: Concise summary (1-2 sentences)
+3. content: Detailed content expanding on the conversation
+4. tags: Array of relevant tags
+5. tools: Array of tools/technologies mentioned
+6. minutes: Estimated time spent (number)
+7. mood: Single emoji from this list ONLY: 😄, 😊, 🙂, 😐, 😕, 😫
+
+Return exactly this format (no extra formatting):
 {
-  "title": "string",
-  "summary": "string", 
-  "content": "string",
-  "tags": ["string"],
-  "tools": ["string"],
-  "minutes": number,
-  "mood": "emoji"
+  "title": "Your title here",
+  "summary": "Your summary here",
+  "content": "Your detailed content here",
+  "tags": ["tag1", "tag2"],
+  "tools": ["tool1", "tool2"],
+  "minutes": 30,
+  "mood": "😊"
 }`
             },
             {
@@ -213,8 +286,9 @@ Return as JSON:
               content: `Generate a log entry based on this conversation:\n\n${userMessages}`
             }
           ],
-          temperature: 0.7,
-          max_tokens: 1000
+          temperature: 0.3,  // Lower temperature for more consistent JSON
+          max_tokens: 1000,
+          response_format: { type: "json_object" }  // Force JSON mode if supported
         })
       })
 
@@ -223,7 +297,98 @@ Return as JSON:
       }
 
       const { choices } = await logResponse.json()
-      const generatedLog = JSON.parse(choices[0].message.content)
+      const rawContent = choices[0].message.content
+      console.log('[generate_log] Raw OpenAI response:', rawContent)
+      
+      // Extract JSON from potential markdown formatting
+      const cleanJsonString = extractJsonFromMarkdown(rawContent)
+      console.log('[generate_log] Cleaned JSON string:', cleanJsonString)
+      
+      let generatedLog
+      
+      // Try multiple parsing strategies
+      const parseStrategies = [
+        () => JSON.parse(cleanJsonString),
+        () => {
+          // Try removing everything before first { and after last }
+          const firstBrace = cleanJsonString.indexOf('{')
+          const lastBrace = cleanJsonString.lastIndexOf('}')
+          if (firstBrace !== -1 && lastBrace !== -1) {
+            return JSON.parse(cleanJsonString.substring(firstBrace, lastBrace + 1))
+          }
+          throw new Error('No JSON object found')
+        },
+        () => {
+          // Try fixing common JSON issues
+          let fixed = cleanJsonString
+            .replace(/\\n/g, '\\\\n')  // Fix newlines
+            .replace(/'/g, '"')        // Fix single quotes
+            .replace(/,\s*}/g, '}')    // Remove trailing commas
+            .replace(/,\s*]/g, ']')    // Remove trailing commas in arrays
+          return JSON.parse(fixed)
+        },
+        () => {
+          // Aggressive JSON extraction - find anything that looks like JSON
+          const jsonRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g
+          const matches = rawContent.match(jsonRegex)
+          if (matches && matches.length > 0) {
+            // Try the largest match (most likely to be complete)
+            const largestMatch = matches.reduce((a, b) => a.length > b.length ? a : b)
+            return JSON.parse(largestMatch)
+          }
+          throw new Error('No JSON pattern found')
+        }
+      ]
+      
+      let lastError: Error | null = null
+      
+      for (let i = 0; i < parseStrategies.length; i++) {
+        try {
+          console.log(`[generate_log] Trying parse strategy ${i + 1}`)
+          generatedLog = parseStrategies[i]()
+          console.log(`[generate_log] Parse strategy ${i + 1} succeeded`)
+          break
+        } catch (error) {
+          console.error(`[generate_log] Parse strategy ${i + 1} failed:`, error)
+          lastError = error as Error
+          continue
+        }
+      }
+      
+      if (!generatedLog) {
+        console.error('[generate_log] All parse strategies failed')
+        console.error('[generate_log] Raw content:', rawContent)
+        console.error('[generate_log] Cleaned content:', cleanJsonString)
+        throw new Error(`Failed to parse generated log JSON: ${lastError?.message || 'Unknown error'}`)
+      }
+      
+      // Validate and fix the parsed object
+      try {
+        // Validate required fields
+        const requiredFields = ['title', 'summary', 'content']
+        for (const field of requiredFields) {
+          if (!generatedLog[field]) {
+            throw new Error(`Missing required field: ${field}`)
+          }
+        }
+        
+        // Ensure arrays exist and fix types
+        if (!Array.isArray(generatedLog.tags)) generatedLog.tags = []
+        if (!Array.isArray(generatedLog.tools)) generatedLog.tools = []
+        if (typeof generatedLog.minutes !== 'number') generatedLog.minutes = 30
+        
+        // Validate mood against allowed values
+        const allowedMoods = ['😄', '😊', '🙂', '😐', '😕', '😫']
+        if (!generatedLog.mood || !allowedMoods.includes(generatedLog.mood)) {
+          generatedLog.mood = '😊'  // Default to happy
+        }
+        
+        console.log('[generate_log] Successfully generated and validated log:', generatedLog.title)
+        
+      } catch (validationError) {
+        console.error('[generate_log] Validation error:', validationError)
+        throw new Error(`Generated log validation failed: ${validationError.message}`)
+      }
 
       return new Response(JSON.stringify({
         generated_log: generatedLog

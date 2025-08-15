@@ -1,28 +1,74 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/auth/AuthProvider';
 import LogComposer from '@/components/LogComposer';
+import { saveLogEntry, type LogEntryData } from '@/lib/saveLogs';
+import { useProgress } from '@/hooks/useProgress';
 
 const NewLog = () => {
   const { userId } = useAuth();
+  const navigate = useNavigate();
+  const { day: currentDay } = useProgress({ countDrafts: true });
+  const nextDay = currentDay + 1;
+  
   const [useAIComposer, setUseAIComposer] = useState(true);
   const [basicFormData, setBasicFormData] = useState({
-    day: 1,
+    day: nextDay,
     title: '',
     summary: '',
     content: '',
     is_published: false
   });
+  const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [isBasicFormSaving, setIsBasicFormSaving] = useState(false);
+  
+  // Update the day when progress changes
+  useEffect(() => {
+    setBasicFormData(prev => ({ ...prev, day: nextDay }));
+  }, [nextDay]);
 
   const handleBasicFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Saving basic form:', basicFormData);
-    alert('Basic form saved! (This is a test)');
+    setIsBasicFormSaving(true);
+    setSaveStatus({ type: null, message: '' });
+    
+    try {
+      const result = await saveLogEntry({
+        day: basicFormData.day,
+        title: basicFormData.title,
+        summary: basicFormData.summary,
+        content: basicFormData.content,
+        is_published: basicFormData.is_published
+      });
+      
+      if (result.success) {
+        setSaveStatus({ type: 'success', message: 'Log entry saved successfully!' });
+        
+        // Navigate to the created log after a short delay
+        setTimeout(() => {
+          if (basicFormData.is_published && result.logId) {
+            navigate(`/log/${result.logId}`);
+          } else {
+            navigate('/my/logs');
+          }
+        }, 1500);
+      } else {
+        setSaveStatus({ type: 'error', message: result.error || 'Failed to save log entry' });
+      }
+    } catch (error) {
+      console.error('Error saving basic form:', error);
+      setSaveStatus({ type: 'error', message: 'An unexpected error occurred. Please try again.' });
+    } finally {
+      setIsBasicFormSaving(false);
+    }
   };
 
   const handleBasicFormChange = (field: string, value: string | number | boolean) => {
@@ -63,9 +109,33 @@ const NewLog = () => {
 
           {useAIComposer ? (
             <LogComposer
-              onSave={async (payload) => {
+              onSave={async (payload: LogEntryData) => {
                 console.log('Saving AI composer log:', payload);
-                alert('AI composer log saved! (This is a test)');
+                setSaveStatus({ type: null, message: '' });
+                
+                try {
+                  const result = await saveLogEntry(payload);
+                  
+                  if (result.success) {
+                    setSaveStatus({ type: 'success', message: `Day ${payload.day} log entry ${payload.is_published ? 'published' : 'saved'} successfully!` });
+                    
+                    // Navigate to the created log after a short delay
+                    setTimeout(() => {
+                      if (payload.is_published && result.logId) {
+                        navigate(`/log/${result.logId}`);
+                      } else {
+                        navigate('/my/logs');
+                      }
+                    }, 1500);
+                  } else {
+                    throw new Error(result.error || 'Failed to save log entry');
+                  }
+                } catch (error) {
+                  console.error('Error saving AI composer log:', error);
+                  const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+                  setSaveStatus({ type: 'error', message: errorMessage });
+                  throw error; // Re-throw so LogComposer can handle it too
+                }
               }}
             />
           ) : (
@@ -150,14 +220,32 @@ const NewLog = () => {
               {/* Submit Button */}
               <Button
                 type="submit"
+                disabled={isBasicFormSaving}
                 className="w-full glow-primary hover:glow-electric transition-all duration-300 hover-lift"
                 size="lg"
               >
-                Create Log Entry
+                {isBasicFormSaving ? 'Saving...' : 'Create Log Entry'}
               </Button>
             </form>
           )}
         </CardContent>
+        
+        {/* Success/Error Messages */}
+        {saveStatus.type && (
+          <div className="mt-6">
+            <Alert variant={saveStatus.type === 'error' ? 'destructive' : 'default'}>
+              {saveStatus.type === 'success' ? (
+                <CheckCircle className="h-4 w-4" />
+              ) : (
+                <AlertCircle className="h-4 w-4" />
+              )}
+              <AlertDescription>
+                {saveStatus.message}
+                {saveStatus.type === 'success' && ' Redirecting...'}
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
       </Card>
     </div>
   );
