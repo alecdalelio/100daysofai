@@ -1,14 +1,14 @@
-# DailyDrive AI: #100DaysOfAI Journey
+# #100DaysOfAI
 
 A comprehensive AI-native web application documenting a 100-day journey of learning, building, and sharing insights about AI development. Built with modern React, TypeScript, and powered by Supabase with integrated AI functionality.
 
 ## 🚀 Live Demo
 
-**URL**: [https://dailydrive-ai.vercel.app](https://dailydrive-ai.vercel.app)
+**URL**: [https://100daysofai.vercel.app](https://100daysofai.vercel.app)
 
 ## 📋 Overview
 
-DailyDrive AI is a sophisticated learning platform that combines daily logging, AI-powered content enhancement, personalized learning paths, and progress tracking. It serves as both a personal learning journal and a public showcase of AI development insights.
+#100DaysOfAI is a sophisticated learning platform that combines daily logging, AI-powered content enhancement, personalized learning paths, and progress tracking. It serves as both a personal learning journal and a public showcase of AI development insights.
 
 ### Core Features
 
@@ -147,8 +147,8 @@ ANTHROPIC_API_KEY=your_anthropic_api_key
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/dailydrive-ai.git
-cd dailydrive-ai
+git clone https://github.com/your-username/100daysofai.git
+cd 100daysofai
 
 # Install dependencies
 npm install
@@ -271,4 +271,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built with ❤️ and AI during #100DaysOfAI**
 
-Follow the journey: [DailyDrive AI](https://dailydrive-ai.vercel.app)
+Follow the journey: [#100DaysOfAI](https://100daysofai.vercel.app)
