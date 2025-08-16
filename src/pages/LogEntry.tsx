@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, ArrowLeft, Trash2 } from "lucide-react";
+import { Calendar, ArrowLeft, Trash2, Edit } from "lucide-react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
@@ -12,6 +12,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { LogEntry as LogEntryType } from "@/lib/types";
 import { fetchSingleLogWithProfile } from "@/lib/fetchLogsWithProfiles";
 import { ShareLogEntryButton } from "@/components/LinkedInShareButton";
+import EditLogEntryForm from "@/components/EditLogEntryForm";
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -32,6 +33,7 @@ const LogEntry = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     async function fetchEntry() {
@@ -211,33 +213,45 @@ const LogEntry = () => {
                     )}
 
                     {isOwner && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            className="h-8 px-2 hover-lift"
-                            disabled={deleting}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            <span className="sr-only">Delete</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete this log?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete the log entry.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDeleteConfirmed} disabled={deleting}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2 hover-lift"
+                          onClick={() => setIsEditing(true)}
+                        >
+                          <Edit className="w-4 h-4" />
+                          <span className="sr-only">Edit</span>
+                        </Button>
+
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-8 px-2 hover-lift"
+                              disabled={deleting}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              <span className="sr-only">Delete</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete this log?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the log entry.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={handleDeleteConfirmed} disabled={deleting}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
                     )}
                   </div>
                 </div>
@@ -284,6 +298,24 @@ const LogEntry = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Edit Form */}
+            {isEditing && entry && (
+              <div className="mt-8">
+                <EditLogEntryForm
+                  entry={entry}
+                  onSuccess={() => {
+                    setIsEditing(false);
+                    // Refresh the entry data
+                    window.location.reload();
+                  }}
+                  onError={(error) => {
+                    console.error('Edit error:', error);
+                  }}
+                  onCancel={() => setIsEditing(false)}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

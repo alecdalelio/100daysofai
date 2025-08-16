@@ -32,6 +32,17 @@ interface ApiResponse {
 
 interface LogComposerProps {
   initial?: string
+  initialData?: {
+    day: number
+    title: string
+    summary: string
+    content: string
+    is_published: boolean
+    tags?: string[]
+    tools?: string[]
+    minutes?: number
+    mood?: string
+  }
   onSave: (payload: {
     day: number
     title: string
@@ -45,10 +56,10 @@ interface LogComposerProps {
   }) => Promise<void>
 }
 
-export default function LogComposer({ initial = '', onSave }: LogComposerProps) {
+export default function LogComposer({ initial = '', initialData, onSave }: LogComposerProps) {
   const { session } = useAuth()
   const { day: currentDay } = useProgress({ countDrafts: true })
-  const nextDay = currentDay + 1
+  const nextDay = initialData ? initialData.day : currentDay + 1
   
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -83,6 +94,22 @@ export default function LogComposer({ initial = '', onSave }: LogComposerProps) 
   useEffect(() => {
     initializeConversation()
   }, [])
+
+  // Initialize with existing data when editing
+  useEffect(() => {
+    if (initialData) {
+      setGeneratedLog({
+        title: initialData.title,
+        summary: initialData.summary,
+        content: initialData.content,
+        tags: initialData.tags || [],
+        tools: initialData.tools || [],
+        minutes: initialData.minutes || 0,
+        mood: initialData.mood || 'neutral'
+      })
+      setShowGeneratedLog(true)
+    }
+  }, [initialData])
 
   const initializeConversation = useCallback(async () => {
     try {
